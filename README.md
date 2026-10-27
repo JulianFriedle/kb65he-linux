@@ -16,12 +16,14 @@ over hidraw, so no driver, Wine or VM is needed.
 | **Actuation point** | per key or for all keys, 0.1–4.0 mm, click/drag keys to select |
 | **Rapid trigger** | per key, 0.1–3.9 mm or off |
 | **Lighting** | on/off, 11 effects, brightness, speed, 7 colour slots |
+| **Profiles** | save, load, import and export all settings as JSON |
+| **Live key view** | pressed keys light up in the GUI |
 | **Device info** | serial, change counter |
 | **CLI** | everything above from the terminal |
 
 Settings are stored on the keyboard itself, so they persist on other computers.
 
-Not yet supported: key remapping, SOCD, DKS, profiles.
+Not yet supported: key remapping, SOCD, DKS.
 See [docs/PROTOCOL.md](docs/PROTOCOL.md) for what is known so far.
 
 ## Supported hardware
@@ -67,6 +69,11 @@ kb65he rapid-trigger 0.2 W A S D    # rapid trigger distance
 kb65he rapid-trigger off --all
 kb65he lighting
 kb65he set-lighting --effect static --brightness 6 --color 255,80,0
+kb65he profile save Gaming          # profiles in ~/.config/kb65he/profiles
+kb65he profile list
+kb65he profile load Gaming
+kb65he backup ~/kb65he-backup.json  # any file
+kb65he restore ~/kb65he-backup.json
 kb65he -v info                      # show raw packets
 ```
 

@@ -17,6 +17,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QFileDialog,
+    QLineEdit,
+    QMessageBox,
     QPushButton,
     QSlider,
     QStackedWidget,
@@ -24,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import __version__
+from .. import __version__, profiles
 from ..device import (
     BRIGHTNESS_MAX,
     KB65HE,
@@ -391,6 +394,172 @@ class LightingPage(QWidget):
 
 
 # ---------------------------------------------------------------------------
+class ProfilesPage(QWidget):
+    def __init__(self, window: "MainWindow"):
+        super().__init__()
+        self.w = window
+        root = QVBoxLayout(self)
+        root.setContentsMargins(32, 28, 32, 28)
+        root.setSpacing(18)
+        root.addLayout(page_header(tr("Profiles"),
+                                   tr("Save the current keyboard settings and load them again later.")))
+
+        new = card()
+        nbox = QHBoxLayout(new)
+        nbox.setContentsMargins(22, 16, 22, 16)
+        nbox.setSpacing(10)
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText(tr("Name, e.g. Gaming"))
+        self.name_edit.returnPressed.connect(self.save_current)
+        nbox.addWidget(self.name_edit, 1)
+        save_btn = QPushButton(tr("Save current settings"))
+        save_btn.setObjectName("primary")
+        save_btn.clicked.connect(self.save_current)
+        nbox.addWidget(save_btn)
+        imp = QPushButton(tr("Import…"))
+        imp.clicked.connect(self.import_file)
+        nbox.addWidget(imp)
+        root.addWidget(new)
+
+        self.list_card = card()
+        self.list_box = QVBoxLayout(self.list_card)
+        self.list_box.setContentsMargins(8, 8, 8, 8)
+        self.list_box.setSpacing(0)
+        root.addWidget(self.list_card)
+        hint = label(tr("Profiles contain actuation points, rapid trigger and lighting. Stored in {path}",
+                        path=str(profiles.profile_dir())), "faint")
+        hint.setWordWrap(True)
+        hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        root.addWidget(hint)
+        root.addStretch(1)
+        self.refresh()
+
+    def load(self, _kb: KB65HE):
+        self.refresh()
+
+    def refresh(self):
+        while self.list_box.count():
+            item = self.list_box.takeAt(0)
+            wdg = item.widget()
+            if wdg is not None:
+                wdg.hide()
+                wdg.setParent(None)
+                wdg.deleteLater()
+        items = profiles.list_profiles()
+        if not items:
+            empty = label(tr("No profiles yet."), "muted")
+            empty.setContentsMargins(14, 12, 14, 12)
+            self.list_box.addWidget(empty)
+            return
+        for i, prof in enumerate(items):
+            if i:
+                line = QFrame()
+                line.setObjectName("divider")
+                line.setFixedHeight(1)
+                self.list_box.addWidget(line)
+            self.list_box.addWidget(self._row(prof))
+
+    def _row(self, prof: dict) -> QWidget:
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(14, 10, 10, 10)
+        h.setSpacing(8)
+        text = QVBoxLayout()
+        text.setSpacing(2)
+        name = label(prof.get("name", "?"))
+        name.setStyleSheet("font-weight: 600;")
+        text.addWidget(name)
+        created = str(prof.get("created", ""))[:16].replace("T", " ")
+        text.addWidget(label(f"{profiles.summary(prof, tr)}   ·   {created}", "faint"))
+        h.addLayout(text, 1)
+        for title, fn, primary in ((tr("Load"), self.apply, True), (tr("Export…"), self.export, False),
+                                   (tr("Delete"), self.delete, False)):
+            b = QPushButton(title)
+            if primary:
+                b.setObjectName("primary")
+            b.clicked.connect(lambda _c=False, p=prof, f=fn: f(p))
+            h.addWidget(b)
+        return row
+
+    # actions -------------------------------------------------------------
+    def save_current(self):
+        name = self.name_edit.text().strip()
+        if not name:
+            self.w.toast.show_message(tr("Enter a name first"), error=True)
+            self.name_edit.setFocus()
+            return
+        if self.w.kb is None:
+            return
+        try:
+            if profiles.path_for(name).exists() and not self._confirm(
+                    tr("Overwrite profile \u201c{name}\u201d?", name=name)):
+                return
+            profiles.save(profiles.capture(self.w.kb, name))
+            self.name_edit.clear()
+            self.refresh()
+            self.w.toast.show_message(tr("Profile \u201c{name}\u201d saved", name=name))
+        except Exception as e:  # noqa: BLE001
+            self.w.on_error(e)
+
+    def apply(self, prof: dict):
+        if self.w.kb is None:
+            return
+        try:
+            profiles.apply(self.w.kb, prof)
+            self.w.reload_pages()
+            self.w.toast.show_message(tr("Profile \u201c{name}\u201d loaded", name=prof.get("name", "")))
+        except Exception as e:  # noqa: BLE001
+            self.w.on_error(e)
+
+    def export(self, prof: dict):
+        default = os.path.join(os.path.expanduser("~"), os.path.basename(prof["_path"]))
+        path, _ = QFileDialog.getSaveFileName(self, tr("Export profile"), default, "JSON (*.json)")
+        if not path:
+            return
+        data = {k: v for k, v in prof.items() if not k.startswith("_")}
+        try:
+            profiles.write_file(data, path)
+            self.w.toast.show_message(tr("Exported to {path}", path=path))
+        except OSError as e:
+            self.w.on_error(e)
+
+    def import_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, tr("Import profile"), os.path.expanduser("~"), "JSON (*.json)")
+        if not path:
+            return
+        try:
+            prof = profiles.read_file(path)
+            name = prof.get("name") or os.path.splitext(os.path.basename(path))[0]
+            prof["name"] = name
+            if profiles.path_for(name).exists() and not self._confirm(
+                    tr("Overwrite profile \u201c{name}\u201d?", name=name)):
+                return
+            profiles.save(prof)
+            self.refresh()
+            self.w.toast.show_message(tr("Profile \u201c{name}\u201d imported", name=name))
+        except (profiles.ProfileError, OSError) as e:
+            self.w.toast.show_message(f"{tr('Error')}: {e}", error=True)
+
+    def delete(self, prof: dict):
+        name = prof.get("name", "")
+        if not self._confirm(tr("Delete profile \u201c{name}\u201d?", name=name)):
+            return
+        try:
+            os.remove(prof["_path"])
+        except OSError as e:
+            self.w.on_error(e)
+        self.refresh()
+
+    def _confirm(self, text: str) -> bool:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.NoIcon)
+        box.setText(text)
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        return box.exec() == QMessageBox.StandardButton.Yes
+
+
+# ---------------------------------------------------------------------------
 class DevicePage(QWidget):
     def __init__(self, window: "MainWindow"):
         super().__init__()
@@ -494,6 +663,7 @@ class MainWindow(QMainWindow):
         self.pages = {
             "actuation": ActuationPage(self),
             "lighting": LightingPage(self),
+            "profiles": ProfilesPage(self),
             "device": DevicePage(self),
         }
         self.not_connected = NotConnectedPage()
@@ -502,7 +672,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.not_connected)
 
         self.nav = QButtonGroup(self)
-        for key, title in [("actuation", tr("Actuation")), ("lighting", tr("Lighting")), ("device", tr("Device"))]:
+        for key, title in [("actuation", tr("Actuation")), ("lighting", tr("Lighting")),
+                           ("profiles", tr("Profiles")), ("device", tr("Device"))]:
             b = QPushButton(title)
             b.setObjectName("nav")
             b.setCheckable(True)
@@ -544,6 +715,15 @@ class MainWindow(QMainWindow):
         self.pages["actuation"].view.update()
         self.pages["lighting"].view.update()
 
+    def reload_pages(self):
+        if self.kb is None:
+            return
+        try:
+            for p in self.pages.values():
+                p.load(self.kb)
+        except Exception as e:  # noqa: BLE001
+            self.on_error(e)
+
     # live key highlighting ----------------------------------------------
     def _views(self):
         return (self.pages["actuation"].view, self.pages["lighting"].view)
@@ -558,6 +738,8 @@ class MainWindow(QMainWindow):
         et = event.type()
         if et in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and self.isActiveWindow():
             if QApplication.activeModalWidget() is not None or QApplication.activePopupWidget() is not None:
+                return False
+            if isinstance(QApplication.focusWidget(), QLineEdit):
                 return False
             idx = EVDEV_TO_INDEX.get(event.nativeScanCode() - 8)
             if idx is None:

@@ -78,3 +78,47 @@ def test_lighting_speed_is_inverted_on_the_wire():
     assert Lighting.from_bytes(bytes(raw)).speed == 3
     assert Lighting(speed=3).to_bytes()[3] == 0
     assert Lighting(speed=0).to_bytes()[3] == 3
+
+
+def test_profile_roundtrip(tmp_path, monkeypatch):
+    from kb65he import profiles
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    kb = KB65HE(FakeTransport())
+    kb.write_trigger({17: (0.5, 0.2), 30: (0.5, 0.2)})
+    kb.write_lighting(Lighting(effect=3, brightness=4, speed=3, color_index=2))
+    prof = profiles.capture(kb, "Gaming WASD")
+    path = profiles.save(prof)
+    assert path.name == "Gaming-WASD.json"
+    assert [p["name"] for p in profiles.list_profiles()] == ["Gaming WASD"]
+
+    # change the device, then restore the profile
+    kb.write_trigger({17: (3.0, 4.0)})
+    kb.write_lighting(Lighting(effect=1, brightness=9, speed=0))
+    assert profiles.apply(kb, profiles.load("Gaming WASD")) == ["trigger", "lighting"]
+    assert kb.read_trigger()[17] == (5, 2)
+    li = kb.read_lighting()
+    assert (li.effect, li.brightness, li.speed, li.color_index) == (3, 4, 3, 2)
+    assert "0.4–1.0 mm" in profiles.summary(prof)
+
+    profiles.delete("Gaming WASD")
+    assert profiles.list_profiles() == []
+
+
+def test_profile_validation_rejects_bad_values():
+    import pytest
+    from kb65he import profiles
+    kb = KB65HE(FakeTransport())
+    good = profiles.capture(kb, "x")
+    profiles.validate(good)
+    for mutate in (
+        lambda p: p.update(format="other"),
+        lambda p: p["trigger"][0].update(actuation=9.0),
+        lambda p: p["trigger"][0].update(key=99),
+        lambda p: p["lighting"].update(effect="disco"),
+        lambda p: p["lighting"].update(brightness=12),
+        lambda p: p["lighting"].update(colors=["red"] * 7),
+    ):
+        bad = __import__("copy").deepcopy(good)
+        mutate(bad)
+        with pytest.raises(profiles.ProfileError):
+            profiles.validate(bad)
