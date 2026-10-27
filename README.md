@@ -38,6 +38,20 @@ Check yours with `lsusb | grep 3367`.
 
 ## Installation
 
+### Debian / Ubuntu / Pop!_OS / Mint (.deb)
+
+Download `kb65he_<version>_all.deb` from the [latest release](https://github.com/JulianFriedle/kb65he-linux/releases/latest), then:
+
+```bash
+sudo apt install ./kb65he_*_all.deb
+```
+
+This installs the CLI, the GUI (app menu: *KB65HE Configurator*), the udev rule and uses the
+distribution's PyQt6. Unplug and replug the keyboard once afterwards. Requires Ubuntu 24.04 /
+Debian 12 or newer.
+
+### Any distribution (pipx)
+
 ```bash
 git clone https://github.com/JulianFriedle/kb65he-linux.git
 cd kb65he-linux
@@ -47,8 +61,7 @@ sudo cp udev/70-kb65he.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 # then unplug and replug the keyboard
 
-# 2. install (pipx keeps it isolated)
-sudo apt install pipx            # Debian / Ubuntu / Pop!_OS
+# 2. install (pipx keeps it isolated; uses PySide6)
 pipx install ".[gui]"
 
 # 3. optional: app menu entry
@@ -91,7 +104,7 @@ The UI language follows `LANG` (German or English); override with `KB65HE_LANG=e
 ## Releasing
 
 Bump `__version__` in `src/kb65he/__init__.py` and push to `main`. The GitHub Action runs the
-tests, creates the tag `vX.Y.Z`, builds the package and publishes a release with generated notes.
+tests, creates the tag `vX.Y.Z`, builds the Python package and the `.deb` and publishes a release with generated notes.
 
 ## How it works
 

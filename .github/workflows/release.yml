@@ -24,8 +24,32 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -q
 
+  deb:
+    # build the .deb and install it the way a user would (system PyQt6)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build .deb
+        run: packaging/build-deb.sh dist
+      - name: Install with apt
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ./dist/kb65he_*_all.deb
+      - name: Smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          KB65HE_QT: pyqt6
+        run: |
+          kb65he --version
+          kb65he --demo actuation 0.5 W A S D
+          /usr/bin/python3 -c "from kb65he.gui.app import MainWindow; from kb65he.gui.qt import QApplication, API; app = QApplication([]); w = MainWindow(demo=True); print('GUI ok with', API)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
+
   release:
-    needs: test
+    needs: [test, deb]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
@@ -58,6 +82,7 @@ jobs:
         run: |
           pip install build
           python -m build
+          packaging/build-deb.sh dist
 
       - name: Create release
         if: steps.v.outputs.exists == 'false'

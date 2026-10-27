@@ -1,9 +1,25 @@
 """Custom widgets: keyboard view, toggle switch, colour swatch, toast."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve, Property
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QAbstractButton, QLabel, QSizePolicy, QWidget
+from .qt import (
+    Property,
+    QAbstractButton,
+    QColor,
+    QEasingCurve,
+    QFont,
+    QLabel,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPointF,
+    QPropertyAnimation,
+    QRectF,
+    QSizePolicy,
+    Qt,
+    QTimer,
+    QWidget,
+    Signal,
+)
 
 from ..layout import ENTER_INDEX, ENTER_TOP, HEIGHT_U, KEYS, WIDTH_U
 from . import theme

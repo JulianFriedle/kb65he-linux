@@ -1,0 +1,15 @@
+Package: kb65he
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: all
+Installed-Size: @SIZE@
+Depends: python3 (>= 3.10), python3-pyqt6, python3-pyqt6.qtsvg
+Maintainer: Julian Friedle <266708724+JulianFriedle@users.noreply.github.com>
+Homepage: https://github.com/JulianFriedle/kb65he-linux
+Description: Unofficial configurator for the Endgame Gear KB65HE 8k keyboard
+ Configure actuation point, rapid trigger, lighting and profiles of the
+ Endgame Gear KB65HE 8k hall-effect keyboard on Linux. Talks to the keyboard
+ directly over hidraw; includes a Qt GUI (kb65he-gui) and a CLI (kb65he).
+ .
+ Not affiliated with Endgame Gear.
