@@ -254,13 +254,27 @@ class FakeTransport:
             self.lighting[:] = data[:26]
             self.revision += 1
             return b""
-        if cmd == Cmd.GET_TRIGGER:
-            return b"".join(bytes([data[i], 2, *self.trigger[data[i]]]) for i in range(0, len(data), 4))
-        if cmd == Cmd.SET_TRIGGER:
-            for i in range(0, len(data), 4):
-                self.trigger[data[i]] = [data[i + 2], data[i + 3]]
-            self.revision += 1
-            return b""
+        if cmd in (Cmd.GET_TRIGGER, Cmd.SET_TRIGGER):
+            # multi-packet: collect the request, answer chunk by chunk
+            from .protocol import MAX_CHUNK
+            idx, count = {
+                0: (0, 1),
+                1: (packet[4] & 0xF, packet[4] >> 4),
+                2: (packet[5], packet[4]),
+                3: (int.from_bytes(packet[6:8], "little"), int.from_bytes(packet[4:6], "little")),
+            }[ptype]
+            if idx == 0:
+                self._buf = bytearray()
+            self._buf += data
+            if cmd == Cmd.SET_TRIGGER:
+                if idx == count - 1:
+                    for i in range(0, len(self._buf) - 3, 4):
+                        self.trigger[self._buf[i]] = [self._buf[i + 2], self._buf[i + 3]]
+                    self.revision += 1
+                return b""
+            full = b"".join(bytes([k, 2, *self.trigger[k]]) for k in range(NUM_KEYS))
+            chunk = MAX_CHUNK[ptype]
+            return full[idx * chunk:(idx + 1) * chunk]
         if cmd == Cmd.GET_SERIAL:
             return b"DEMO0000000000000"
         if cmd == Cmd.GET_REVISION:
