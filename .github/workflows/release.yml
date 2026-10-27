@@ -1,45 +1,50 @@
 name: Test & Release
 
-# Runs on the maintainer's self-hosted runner (label "kb65he").
-# SECURITY: this repository is public. Never add `pull_request` /
-# `pull_request_target` triggers here - that would let anyone run code on the
-# runner machine. Only pushes to main (maintainer only) and manual runs.
-#
-# A release is created automatically whenever the version in
-# src/kb65he/__init__.py changes on main and no tag for it exists yet.
+# Runs on GitHub-hosted runners (free for public repositories).
+# Tests run on every push and pull request. A release is created automatically
+# whenever the version in src/kb65he/__init__.py changes on main and no tag for
+# it exists yet.
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: release
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  test-and-release:
-    runs-on: [self-hosted, linux, kb65he]
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  release:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Set up venv
-        run: |
-          python3 -m venv .ci-venv
-          .ci-venv/bin/pip install -q --upgrade pip
-          .ci-venv/bin/pip install -q -e ".[dev]" build
-
-      - name: Test
-        run: .ci-venv/bin/pytest -q
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Read version
         id: v
         run: |
-          VERSION=$(.ci-venv/bin/python -c "import kb65he; print(kb65he.__version__)")
+          VERSION=$(python -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('src/kb65he/__init__.py').read()).group(1))")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -51,8 +56,8 @@ jobs:
       - name: Build
         if: steps.v.outputs.exists == 'false'
         run: |
-          rm -rf dist
-          .ci-venv/bin/python -m build
+          pip install build
+          python -m build
 
       - name: Create release
         if: steps.v.outputs.exists == 'false'
@@ -63,7 +68,3 @@ jobs:
           name: v${{ steps.v.outputs.version }}
           generate_release_notes: true
           files: dist/*
-
-      - name: Clean up
-        if: always()
-        run: rm -rf .ci-venv dist build src/*.egg-info
