@@ -132,7 +132,7 @@ class Lighting:
     on: bool = True
     effect: int = 1
     brightness: int = 9
-    speed: int = 2
+    speed: int = 1  # 0 = slowest .. SPEED_MAX = fastest (inverted on the wire)
     color_index: int = 0
     colors: list[tuple[int, int, int]] = field(default_factory=lambda: [
         (255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255),
@@ -145,10 +145,13 @@ class Lighting:
         if len(b) < cls.SIZE:
             raise ProtocolError(f"lighting block too short ({len(b)} bytes)")
         colors = [tuple(b[5 + 3 * i:8 + 3 * i]) for i in range(7)]
-        return cls(bool(b[0]), b[1], b[2], b[3], b[4], colors)  # type: ignore[arg-type]
+        # the firmware stores 0 = fastest, SPEED_MAX = slowest
+        speed = SPEED_MAX - min(b[3], SPEED_MAX)
+        return cls(bool(b[0]), b[1], b[2], speed, b[4], colors)  # type: ignore[arg-type]
 
     def to_bytes(self) -> bytes:
-        out = bytearray([int(self.on), self.effect, self.brightness, self.speed, self.color_index])
+        raw_speed = SPEED_MAX - max(0, min(self.speed, SPEED_MAX))
+        out = bytearray([int(self.on), self.effect, self.brightness, raw_speed, self.color_index])
         for r, g, b in self.colors[:7]:
             out += bytes([r & 0xFF, g & 0xFF, b & 0xFF])
         return bytes(out)

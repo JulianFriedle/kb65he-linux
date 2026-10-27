@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> None:
     li.add_argument("--on", choices=["on", "off"])
     li.add_argument("--effect", choices=LIGHT_EFFECTS)
     li.add_argument("--brightness", type=int, choices=range(BRIGHTNESS_MAX + 1), metavar=f"0..{BRIGHTNESS_MAX}")
-    li.add_argument("--speed", type=int, choices=range(SPEED_MAX + 1), metavar=f"0..{SPEED_MAX}")
+    li.add_argument("--speed", type=int, choices=range(SPEED_MAX + 1), metavar=f"0..{SPEED_MAX}", help="higher = faster")
     li.add_argument("--color", help="R,G,B for the active colour slot")
     li.add_argument("--slot", type=int, choices=range(7), metavar="0..6", help="active colour slot")
 

@@ -57,7 +57,7 @@ Even ids write, odd ids read.
 | 0 | on | 0/1 |
 | 1 | effect | 0 spectrum, 1 static, 2 wave, 3 breathing, 4 snake, 5 magnetic, 6 wave centre, 7 laser, 8 cross wave, 9 traffic, 10 ripple |
 | 2 | brightness | 0–9 |
-| 3 | speed | 0–3 |
+| 3 | speed | 0–3, **inverted**: 0 = fastest, 3 = slowest |
 | 4 | active colour slot | 0–6 |
 | 5–25 | 7 × RGB | |
 

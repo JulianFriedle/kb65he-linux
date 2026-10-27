@@ -69,3 +69,12 @@ def test_package_version_and_cli_import():
     import kb65he
     import kb65he.cli  # noqa: F401
     assert kb65he.__version__
+
+
+def test_lighting_speed_is_inverted_on_the_wire():
+    # issue #1: firmware byte 0 = fastest, 3 = slowest
+    raw = bytearray(Lighting().to_bytes())
+    raw[3] = 0
+    assert Lighting.from_bytes(bytes(raw)).speed == 3
+    assert Lighting(speed=3).to_bytes()[3] == 0
+    assert Lighting(speed=0).to_bytes()[3] == 3
