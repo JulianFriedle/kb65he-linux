@@ -159,6 +159,9 @@ class KB65HE:
     def __init__(self, transport, info: DeviceInfo | None = None):
         self.t = transport
         self.info = info
+        # The firmware does not report the last key (68) when reading the trigger
+        # table, so remember what we wrote.
+        self._written: dict[int, tuple[int, int]] = {}
 
     @classmethod
     def open(cls, verbose: bool = False) -> "KB65HE":
@@ -213,6 +216,8 @@ class KB65HE:
             k, kind, a, b = data[i:i + 4]
             if kind == 2 and k < NUM_KEYS and k not in result:
                 result[k] = (a, b)
+        for k, v in self._written.items():
+            result.setdefault(k, v)
         return result
 
     def read_actuation(self) -> dict[int, float]:
@@ -231,6 +236,8 @@ class KB65HE:
             b = current.get(key, (10, 2))[1]
             records.append(bytes([key, 2, raw, b]))
         self.set(Cmd.SET_TRIGGER, b"".join(records))
+        for r in records:
+            self._written[r[0]] = (r[2], r[3])
 
 
 class FakeTransport:

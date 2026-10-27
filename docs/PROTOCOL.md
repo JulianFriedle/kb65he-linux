@@ -72,3 +72,5 @@ Records of 4 bytes: `[key, 0x02, A, B]`, key = 0…68 (see `src/kb65he/layout.py
   (Fn + Tab). Probably related to rapid trigger. Preserve it when writing.
 
 The table must be read in one transfer (all 69 records); splitting the read request into single packets makes the firmware time out. Writes of any number of records work.
+
+Firmware quirk: the read response never contains a record for the last key (68, arrow right); the bytes at that position are left over from the previous packet. Writing key 68 is accepted.

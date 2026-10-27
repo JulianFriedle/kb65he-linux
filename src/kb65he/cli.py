@@ -69,16 +69,18 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"  slot {i}: #{c[0]:02x}{c[1]:02x}{c[2]:02x}" + ("  <- active" if i == li_.color_index else ""))
         elif a.cmd == "actuation":
             if a.mm is None:
-                for k, mm in sorted(kb.read_actuation().items()):
+                values = kb.read_actuation()
+                for k in range(NUM_KEYS):
                     key = KEY_BY_INDEX[k]
-                    print(f"{k:2d}  {key.labels['de'] or 'Space':6s} {key.labels['uk'] or 'Space':6s} {mm:.1f} mm")
+                    mm = f"{values[k]:.1f} mm" if k in values else "?  (not reported by firmware)"
+                    print(f"{k:2d}  {key.labels['de'] or 'Space':6s} {key.labels['uk'] or 'Space':6s} {mm}")
             else:
                 keys = list(range(NUM_KEYS)) if a.all else _parse_keys(a.keys)
                 if not keys:
                     sys.exit("give key names/numbers or --all")
                 kb.write_actuation({k: a.mm for k in keys})
                 now = kb.read_actuation()
-                bad = [k for k in keys if abs(now.get(k, -1) - a.mm) > 0.05]
+                bad = [k for k in keys if k in now and abs(now[k] - a.mm) > 0.05]
                 print(f"{len(keys)} key(s) set to {a.mm:.1f} mm" + (f" - MISMATCH: {bad}" if bad else ""))
         elif a.cmd == "set-lighting":
             li_ = kb.read_lighting()
