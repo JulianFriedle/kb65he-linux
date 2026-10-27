@@ -71,4 +71,4 @@ Records of 4 bytes: `[key, 0x02, A, B]`, key = 0…68 (see `src/kb65he/layout.py
 * **B** = unknown. Changed for all keys at once when using the on-keyboard adjustment mode
   (Fn + Tab). Probably related to rapid trigger. Preserve it when writing.
 
-Requests of up to 14 records fit into a single packet.
+The table must be read in one transfer (all 69 records); splitting the read request into single packets makes the firmware time out. Writes of any number of records work.

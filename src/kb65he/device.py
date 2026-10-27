@@ -204,15 +204,15 @@ class KB65HE:
     # trigger / actuation -------------------------------------------------
     def read_trigger(self) -> dict[int, tuple[int, int]]:
         """Return {key: (actuation, b)}; actuation in 0.1 mm, b not yet decoded."""
+        # The firmware only answers a request for the whole table (one multi-packet
+        # transfer); splitting it into single packets times out.
         result: dict[int, tuple[int, int]] = {}
-        for start in range(0, NUM_KEYS, RECORDS_PER_PACKET):
-            keys = range(start, min(start + RECORDS_PER_PACKET, NUM_KEYS))
-            req = b"".join(bytes([k, 0, 0, 0]) for k in keys)
-            data = self.get(Cmd.GET_TRIGGER, len(req), req)
-            for i in range(0, len(data) - 3, 4):
-                k, kind, a, b = data[i:i + 4]
-                if kind == 2 and k < NUM_KEYS:
-                    result[k] = (a, b)
+        req = b"".join(bytes([k, 0, 0, 0]) for k in range(NUM_KEYS))
+        data = self.get(Cmd.GET_TRIGGER, len(req), req)
+        for i in range(0, len(data) - 3, 4):
+            k, kind, a, b = data[i:i + 4]
+            if kind == 2 and k < NUM_KEYS and k not in result:
+                result[k] = (a, b)
         return result
 
     def read_actuation(self) -> dict[int, float]:
@@ -230,8 +230,7 @@ class KB65HE:
                 raise ValueError(f"actuation {mm} mm out of range 0.1..4.0")
             b = current.get(key, (10, 2))[1]
             records.append(bytes([key, 2, raw, b]))
-        for i in range(0, len(records), RECORDS_PER_PACKET):
-            self.set(Cmd.SET_TRIGGER, b"".join(records[i:i + RECORDS_PER_PACKET]))
+        self.set(Cmd.SET_TRIGGER, b"".join(records))
 
 
 class FakeTransport:
