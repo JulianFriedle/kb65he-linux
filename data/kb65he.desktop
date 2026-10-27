@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=KB65HE Configurator
+Comment=Configure the Endgame Gear KB65HE 8k keyboard
+Exec=kb65he-gui
+Icon=kb65he
+Terminal=false
+Categories=Settings;HardwareSettings;Utility;
+Keywords=keyboard;hall effect;actuation;rgb;
+StartupWMClass=kb65he

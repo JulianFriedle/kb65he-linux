@@ -1,0 +1,9 @@
+# Endgame Gear KB65HE 8k - give the logged-in user access to the configuration
+# interface (hidraw). The file name must sort before 73-seat-late.rules so that
+# the "uaccess" tag is applied.
+#
+#   sudo cp udev/70-kb65he.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3367", ATTRS{idProduct}=="5035", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3367", ATTRS{idProduct}=="5036", MODE="0660", TAG+="uaccess"
