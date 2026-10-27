@@ -68,8 +68,9 @@ Records of 4 bytes: `[key, 0x02, A, B]`, key = 0…68 (see `src/kb65he/layout.py
 * Read: send records `[key, 0, 0, 0]`, the response contains the filled records.
 * Write: send the records to change.
 * **A** = actuation point in 0.1 mm (1…40). Verified.
-* **B** = unknown. Changed for all keys at once when using the on-keyboard adjustment mode
-  (Fn + Tab). Probably related to rapid trigger. Preserve it when writing.
+* **B** = rapid-trigger distance in 0.1 mm (1…40). Verified: with A = 2.0 mm and B = 0.1 mm the
+  key re-triggers after a tiny lift; with B = 4.0 mm it does not. There is no separate on/off
+  flag, 4.0 mm behaves like "off". The on-keyboard adjustment mode (Fn + Tab) changed B for all keys.
 
 The table must be read in one transfer (all 69 records); splitting the read request into single packets makes the firmware time out. Writes of any number of records work.
 

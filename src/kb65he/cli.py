@@ -43,10 +43,15 @@ def main(argv: list[str] | None = None) -> None:
     act.add_argument("keys", nargs="*", help="key names or numbers (e.g. W A S D)")
     act.add_argument("--all", action="store_true", help="apply to all keys")
 
+    rt = sub.add_parser("rapid-trigger", help="set rapid-trigger distance (re-trigger after lifting/pressing this far)")
+    rt.add_argument("mm", help="0.1..4.0 or 'off'")
+    rt.add_argument("keys", nargs="*", help="key names or numbers")
+    rt.add_argument("--all", action="store_true", help="apply to all keys")
+
     raw = sub.add_parser("trigger-raw", help="(research) write raw trigger bytes A B for one key")
     raw.add_argument("key")
     raw.add_argument("a", type=int, help="actuation, 1..40 (0.1 mm)")
-    raw.add_argument("b", type=int, help="unknown second value, 1..40")
+    raw.add_argument("b", type=int, help="rapid-trigger distance, 1..40 (0.1 mm)")
 
     li = sub.add_parser("set-lighting", help="change lighting")
     li.add_argument("--on", choices=["on", "off"])
@@ -74,11 +79,17 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"  slot {i}: #{c[0]:02x}{c[1]:02x}{c[2]:02x}" + ("  <- active" if i == li_.color_index else ""))
         elif a.cmd == "actuation":
             if a.mm is None:
-                values = kb.read_actuation()
+                trig = kb.read_trigger()
+                print("nr  DE     UK     actuation  rapid trigger")
                 for k in range(NUM_KEYS):
                     key = KEY_BY_INDEX[k]
-                    mm = f"{values[k]:.1f} mm" if k in values else "?  (not reported by firmware)"
-                    print(f"{k:2d}  {key.labels['de'] or 'Space':6s} {key.labels['uk'] or 'Space':6s} {mm}")
+                    if k in trig:
+                        a_, b_ = trig[k]
+                        rtxt = "off" if b_ >= 40 else f"{b_ / 10:.1f} mm"
+                        val = f"{a_ / 10:.1f} mm     {rtxt}"
+                    else:
+                        val = "?  (not reported by firmware)"
+                    print(f"{k:2d}  {key.labels['de'] or 'Space':6s} {key.labels['uk'] or 'Space':6s} {val}")
             else:
                 keys = list(range(NUM_KEYS)) if a.all else _parse_keys(a.keys)
                 if not keys:
@@ -87,6 +98,13 @@ def main(argv: list[str] | None = None) -> None:
                 now = kb.read_actuation()
                 bad = [k for k in keys if k in now and abs(now[k] - a.mm) > 0.05]
                 print(f"{len(keys)} key(s) set to {a.mm:.1f} mm" + (f" - MISMATCH: {bad}" if bad else ""))
+        elif a.cmd == "rapid-trigger":
+            mm = 4.0 if a.mm.lower() == "off" else float(a.mm)
+            keys = list(range(NUM_KEYS)) if a.all else _parse_keys(a.keys)
+            if not keys:
+                sys.exit("give key names/numbers or --all")
+            kb.write_rapid_trigger({k: mm for k in keys})
+            print(f"{len(keys)} key(s): rapid trigger " + ("off" if mm >= 4.0 else f"{mm:.1f} mm"))
         elif a.cmd == "trigger-raw":
             from .protocol import Cmd
             key = _parse_keys([a.key])[0]

@@ -9,18 +9,19 @@ over hidraw, so no driver, Wine or VM is needed.
 
 ![Actuation](docs/screenshots/actuation.png)
 
-## Features (v0.1)
+## Features
 
 | | |
 |---|---|
 | **Actuation point** | per key or for all keys, 0.1–4.0 mm, click/drag keys to select |
+| **Rapid trigger** | per key, 0.1–3.9 mm or off |
 | **Lighting** | on/off, 11 effects, brightness, speed, 7 colour slots |
 | **Device info** | serial, change counter |
 | **CLI** | everything above from the terminal |
 
 Settings are stored on the keyboard itself, so they persist on other computers.
 
-Not yet supported: rapid trigger distances, key remapping, SOCD, DKS, profiles.
+Not yet supported: key remapping, SOCD, DKS, profiles.
 See [docs/PROTOCOL.md](docs/PROTOCOL.md) for what is known so far.
 
 ## Supported hardware
@@ -62,6 +63,8 @@ kb65he info
 kb65he actuation                    # list all keys
 kb65he actuation 1.0 --all          # all keys to 1.0 mm
 kb65he actuation 0.4 W A S D        # by name (DE or UK legend) or key number
+kb65he rapid-trigger 0.2 W A S D    # rapid trigger distance
+kb65he rapid-trigger off --all
 kb65he lighting
 kb65he set-lighting --effect static --brightness 6 --color 255,80,0
 kb65he -v info                      # show raw packets

@@ -24,6 +24,13 @@ _DE = {
     "Select at least one key": "Mindestens eine Taste auswählen",
     "more sensitive": "empfindlicher",
     "deeper": "tiefer",
+    "Rapid Trigger": "Rapid Trigger",
+    "Off": "Aus",
+    "Show": "Anzeige",
+    "less sensitive": "weniger empfindlich",
+    "{n} keys saved": "{n} Tasten gespeichert",
+    "Rapid Trigger: the key re-triggers as soon as it moves this far down or up, instead of waiting for the fixed actuation point.":
+        "Rapid Trigger: Die Taste löst erneut aus, sobald sie sich um diese Strecke nach unten oder oben bewegt, statt auf den festen Auslösepunkt zu warten.",
     "Backlight": "Hintergrundbeleuchtung",
     "Effect": "Effekt",
     "Brightness": "Helligkeit",

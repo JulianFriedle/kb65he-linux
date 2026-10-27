@@ -34,6 +34,8 @@ class KeyboardView(QWidget):
         self.mode = mode
         self.layout_name = "de"
         self.values: dict[int, float] = {}
+        self.rt: dict[int, float] = {}
+        self.display = "actuation"  # or "rt"
         self.selected: set[int] = set()
         self.tint = QColor(theme.ACCENT)
         self.tint_strength = 1.0
@@ -134,6 +136,7 @@ class KeyboardView(QWidget):
             pen = QPen(QColor(theme.ACCENT) if sel else QColor(theme.BORDER))
             pen.setWidthF(2.0 if sel else 1.0)
             p.setPen(pen)
+            p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawPath(path)
 
             legend = key.labels.get(self.layout_name, "")
@@ -151,8 +154,17 @@ class KeyboardView(QWidget):
                 p.setFont(value_font)
                 p.setPen(QColor(theme.TEXT))
                 vrect = rect.adjusted(pad, pad, -pad, -pad * 0.8)
-                p.drawText(vrect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
-                           f"{self.values[key.index]:.1f}")
+                rt = self.rt.get(key.index)
+                if self.display == "rt":
+                    txt = "–" if rt is None or rt >= 4.0 else f"{rt:.1f}"
+                else:
+                    txt = f"{self.values[key.index]:.1f}"
+                p.drawText(vrect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom, txt)
+                if rt is not None and rt < 4.0:
+                    d = max(4.0, u * 0.09)
+                    p.setPen(Qt.PenStyle.NoPen)
+                    p.setBrush(QColor(theme.ACCENT))
+                    p.drawEllipse(QRectF(rect.right() - pad - d, rect.top() + pad, d, d))
         p.end()
 
     # interaction -------------------------------------------------------
@@ -169,11 +181,19 @@ class KeyboardView(QWidget):
         k = self._key_at(e.position())
         if k != self._hover:
             self._hover = k
+            self.setToolTip(self._tooltip(k))
             if self.mode == "actuation":
                 self.setCursor(Qt.CursorShape.PointingHandCursor if k is not None else Qt.CursorShape.ArrowCursor)
             self.update()
         if self._drag_value is not None and k is not None:
             self._apply(k)
+
+    def _tooltip(self, k) -> str:
+        if k is None or self.mode != "actuation" or k not in self.values:
+            return ""
+        rt = self.rt.get(k)
+        rt_txt = "off" if rt is None or rt >= 4.0 else f"{rt:.1f} mm"
+        return f"#{k}  ·  {self.values[k]:.1f} mm  ·  RT {rt_txt}"
 
     def mouseReleaseEvent(self, _e):
         self._drag_value = None

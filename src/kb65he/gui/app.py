@@ -30,6 +30,7 @@ from ..device import (
     KB65HE,
     LIGHT_EFFECTS,
     NUM_KEYS,
+    RT_OFF,
     SPEED_MAX,
     BootloaderMode,
     DeviceNotFound,
@@ -77,7 +78,7 @@ class ActuationPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 28, 32, 28)
         root.setSpacing(18)
-        root.addLayout(page_header(tr("Actuation point"), tr("Click keys to select them, then apply a value.")))
+        root.addLayout(page_header(tr("Actuation"), tr("Click keys to select them, then apply a value.")))
 
         kb_card = card()
         kb_box = QVBoxLayout(kb_card)
@@ -102,67 +103,126 @@ class ActuationPage(QWidget):
         bar.addSpacing(8)
         bar.addWidget(self.sel_label)
         bar.addStretch(1)
+        bar.addWidget(label(tr("Show"), "faint"))
+        self.display = QButtonGroup(self)
+        for i, (text, mode) in enumerate([(tr("Actuation point"), "actuation"), (tr("Rapid Trigger"), "rt")]):
+            b = QPushButton(text)
+            b.setObjectName("chip")
+            b.setCheckable(True)
+            b.setChecked(i == 0)
+            b.clicked.connect(lambda _c=False, m=mode: self._set_display(m))
+            self.display.addButton(b, i)
+            bar.addWidget(b)
         root.addLayout(bar)
 
         ctl = card()
-        cbox = QHBoxLayout(ctl)
-        cbox.setContentsMargins(22, 18, 22, 18)
-        cbox.setSpacing(22)
-        vcol = QVBoxLayout()
-        vcol.setSpacing(2)
-        vcol.addWidget(label(tr("Actuation point"), "sectionLabel"))
-        self.value_label = label("1.0 mm", "bigValue")
-        vcol.addWidget(self.value_label)
-        cbox.addLayout(vcol)
+        grid = QGridLayout(ctl)
+        grid.setContentsMargins(22, 18, 22, 18)
+        grid.setHorizontalSpacing(22)
+        grid.setVerticalSpacing(14)
 
-        scol = QVBoxLayout()
-        scol.setSpacing(6)
-        self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setRange(1, 40)
-        self.slider.setValue(10)
+        # row 0: actuation point
+        self.value_label = label("1.0 mm", "bigValue")
+        self.slider = self._slider(grid, 0, tr("Actuation point"), self.value_label,
+                                   "0.1 mm · " + tr("more sensitive"), tr("deeper") + " · 4.0 mm", 1, 40)
         self.slider.valueChanged.connect(lambda v: self.value_label.setText(f"{v / 10:.1f} mm"))
-        scol.addStretch(1)
-        scol.addWidget(self.slider)
-        hints = QHBoxLayout()
-        hints.addWidget(label("0.1 mm · " + tr("more sensitive"), "faint"))
-        hints.addStretch(1)
-        hints.addWidget(label(tr("deeper") + " · 4.0 mm", "faint"))
-        scol.addLayout(hints)
-        scol.addStretch(1)
-        cbox.addLayout(scol, 1)
+
+        # row 1: rapid trigger
+        self.rt_label = label("0.3 mm", "bigValue")
+        self.rt_toggle = Toggle()
+        self.rt_slider = self._slider(grid, 1, tr("Rapid Trigger"), self.rt_label,
+                                      "0.1 mm · " + tr("more sensitive"), tr("less sensitive") + " · 3.9 mm",
+                                      1, 39, self.rt_toggle)
+        self.rt_slider.setValue(3)
+        self.rt_slider.valueChanged.connect(self._rt_text)
+        self.rt_toggle.toggled.connect(self._rt_text)
+        self.rt_toggle.setChecked(True)
 
         self.apply_btn = QPushButton(tr("Apply to selection"))
         self.apply_btn.setObjectName("primary")
         self.apply_btn.setMinimumHeight(40)
         self.apply_btn.clicked.connect(self.apply)
-        cbox.addWidget(self.apply_btn)
+        grid.addWidget(self.apply_btn, 0, 2, 2, 1, Qt.AlignmentFlag.AlignVCenter)
+        grid.setColumnStretch(1, 1)
         root.addWidget(ctl)
+        rt_hint = label(tr("Rapid Trigger: the key re-triggers as soon as it moves this far down or up, "
+                           "instead of waiting for the fixed actuation point."), "faint")
+        rt_hint.setWordWrap(True)
+        root.addWidget(rt_hint)
         root.addStretch(1)
         self._sel_changed()
+
+    def _slider(self, grid, row, title, value_label, lo, hi, vmin, vmax, toggle=None) -> QSlider:
+        head = QVBoxLayout()
+        head.setSpacing(2)
+        top = QHBoxLayout()
+        top.setSpacing(10)
+        top.addWidget(label(title, "sectionLabel"))
+        if toggle is not None:
+            top.addWidget(toggle)
+        top.addStretch(1)
+        head.addLayout(top)
+        value_label.setMinimumWidth(130)
+        head.addWidget(value_label)
+        grid.addLayout(head, row, 0)
+        col = QVBoxLayout()
+        col.setSpacing(6)
+        s = QSlider(Qt.Orientation.Horizontal)
+        s.setRange(vmin, vmax)
+        s.setValue(10)
+        col.addStretch(1)
+        col.addWidget(s)
+        hints = QHBoxLayout()
+        hints.addWidget(label(lo, "faint"))
+        hints.addStretch(1)
+        hints.addWidget(label(hi, "faint"))
+        col.addLayout(hints)
+        col.addStretch(1)
+        grid.addLayout(col, row, 1)
+        return s
+
+    def _set_display(self, mode):
+        self.view.display = mode
+        self.view.update()
+
+    def _rt_text(self, *_):
+        on = self.rt_toggle.isChecked()
+        self.rt_slider.setEnabled(on)
+        self.rt_label.setText(f"{self.rt_slider.value() / 10:.1f} mm" if on else tr("Off"))
 
     def _sel_changed(self):
         n = len(self.view.selected)
         self.sel_label.setText(tr("{n} selected", n=n))
         self.apply_btn.setEnabled(n > 0)
-        vals = {round(self.view.values.get(k, 0), 1) for k in self.view.selected}
-        if len(vals) == 1 and next(iter(vals)) > 0:
-            self.slider.setValue(round(next(iter(vals)) * 10))
+        sel = [k for k in self.view.selected if k in self.view.values]
+        acts = {round(self.view.values[k], 1) for k in sel}
+        if len(acts) == 1:
+            self.slider.setValue(round(acts.pop() * 10))
+        rts = {round(self.view.rt.get(k, 0), 1) for k in sel}
+        if len(rts) == 1:
+            v = rts.pop()
+            self.rt_toggle.setChecked(v < RT_OFF)
+            if v < RT_OFF:
+                self.rt_slider.setValue(round(v * 10))
+            self._rt_text()
 
     def load(self, kb: KB65HE):
-        self.view.values = kb.read_actuation()
+        trig = kb.read_trigger()
+        self.view.values = {k: a / 10 for k, (a, _) in trig.items()}
+        self.view.rt = {k: b / 10 for k, (_, b) in trig.items()}
         self.view.update()
 
     def apply(self):
         kb = self.w.kb
         if kb is None or not self.view.selected:
             return
-        mm = self.slider.value() / 10
+        act = self.slider.value() / 10
+        rt = self.rt_slider.value() / 10 if self.rt_toggle.isChecked() else RT_OFF
         keys = sorted(self.view.selected)
         try:
-            kb.write_actuation({k: mm for k in keys})
-            self.view.values = kb.read_actuation()
-            self.view.update()
-            self.w.toast.show_message(tr("{n} keys set to {mm} mm", n=len(keys), mm=f"{mm:.1f}"))
+            kb.write_trigger({k: (act, rt) for k in keys})
+            self.load(kb)
+            self.w.toast.show_message(tr("{n} keys saved", n=len(keys)))
         except Exception as e:  # noqa: BLE001
             self.w.on_error(e)
 

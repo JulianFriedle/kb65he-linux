@@ -24,6 +24,7 @@ VENDOR_DESCRIPTOR_PREFIX = b"\x06\x01\xff"   # Usage Page (0xFF01)
 NUM_KEYS = 69
 ACTUATION_MIN = 1      # 0.1 mm
 ACTUATION_MAX = 40     # 4.0 mm
+RT_OFF = 4.0           # rapid-trigger distance that behaves like "off"
 RECORDS_PER_PACKET = 14  # 14 x 4 bytes fit in a single packet
 
 LIGHT_EFFECTS = [
@@ -223,21 +224,33 @@ class KB65HE:
     def read_actuation(self) -> dict[int, float]:
         return {k: a / 10 for k, (a, _) in self.read_trigger().items()}
 
-    def write_actuation(self, values: dict[int, float]) -> None:
-        """values: {key: millimetres}. The second (undecoded) byte is preserved."""
+    def read_rapid_trigger(self) -> dict[int, float]:
+        """Rapid-trigger distance per key in mm (4.0 = effectively off)."""
+        return {k: b / 10 for k, (_, b) in self.read_trigger().items()}
+
+    def write_trigger(self, values: dict[int, tuple[float | None, float | None]]) -> None:
+        """values: {key: (actuation_mm, rapid_trigger_mm)}; None keeps the current value."""
         current = self.read_trigger()
         records = []
-        for key, mm in sorted(values.items()):
+        for key, (act, rt) in sorted(values.items()):
             if not 0 <= key < NUM_KEYS:
                 raise ValueError(f"key {key} out of range")
-            raw = round(mm * 10)
-            if not ACTUATION_MIN <= raw <= ACTUATION_MAX:
-                raise ValueError(f"actuation {mm} mm out of range 0.1..4.0")
-            b = current.get(key, (10, 2))[1]
-            records.append(bytes([key, 2, raw, b]))
+            cur_a, cur_b = current.get(key, (10, 2))
+            a = cur_a if act is None else round(act * 10)
+            b = cur_b if rt is None else round(rt * 10)
+            for v, name in ((a, "actuation"), (b, "rapid trigger")):
+                if not ACTUATION_MIN <= v <= ACTUATION_MAX:
+                    raise ValueError(f"{name} {v / 10} mm out of range 0.1..4.0")
+            records.append(bytes([key, 2, a, b]))
         self.set(Cmd.SET_TRIGGER, b"".join(records))
         for r in records:
             self._written[r[0]] = (r[2], r[3])
+
+    def write_actuation(self, values: dict[int, float]) -> None:
+        self.write_trigger({k: (mm, None) for k, mm in values.items()})
+
+    def write_rapid_trigger(self, values: dict[int, float]) -> None:
+        self.write_trigger({k: (None, mm) for k, mm in values.items()})
 
 
 class FakeTransport:

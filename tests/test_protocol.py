@@ -54,3 +54,12 @@ def test_layout_is_complete():
             width += 1.5  # ISO enter top part
         assert width == WIDTH_U
     assert NAME_TO_INDEX["W"] == 17
+
+
+def test_rapid_trigger_write_keeps_actuation():
+    kb = KB65HE(FakeTransport())
+    kb.write_actuation({5: 1.5})
+    kb.write_rapid_trigger({5: 0.3})
+    assert kb.read_trigger()[5] == (15, 3)
+    kb.write_trigger({6: (2.0, 4.0)})
+    assert kb.read_trigger()[6] == (20, 40)
