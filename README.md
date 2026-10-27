@@ -81,6 +81,11 @@ kb65he-gui --demo
 
 The UI language follows `LANG` (German or English); override with `KB65HE_LANG=en`.
 
+## Releasing
+
+Bump `__version__` in `src/kb65he/__init__.py` and push to `main`. The GitHub Action runs the
+tests, creates the tag `vX.Y.Z`, builds the package and publishes a release with generated notes.
+
 ## How it works
 
 The keyboard exposes a vendor HID interface (usage page `0xFF01`, interface 2) that
