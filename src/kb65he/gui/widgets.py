@@ -36,6 +36,7 @@ class KeyboardView(QWidget):
         self.values: dict[int, float] = {}
         self.rt: dict[int, float] = {}
         self.display = "actuation"  # or "rt"
+        self.pressed: set[int] = set()
         self.selected: set[int] = set()
         self.tint = QColor(theme.ACCENT)
         self.tint_strength = 1.0
@@ -131,6 +132,8 @@ class KeyboardView(QWidget):
                 fill = _mix(base, self.tint, 0.42 * self.tint_strength) if self.lit else base
             if hover:
                 fill = fill.lighter(118)
+            if key.index in self.pressed:
+                fill = _mix(fill, accent, 0.75)
             p.fillPath(path, fill)
 
             pen = QPen(QColor(theme.ACCENT) if sel else QColor(theme.BORDER))
@@ -141,6 +144,8 @@ class KeyboardView(QWidget):
 
             legend = key.labels.get(self.layout_name, "")
             text_col = QColor(theme.TEXT) if (sel or self.mode == "lighting") else QColor(theme.MUTED)
+            if key.index in self.pressed:
+                text_col = QColor(theme.ACCENT_TEXT)
             p.setPen(text_col)
             p.setFont(label_font)
             pad = u * 0.14

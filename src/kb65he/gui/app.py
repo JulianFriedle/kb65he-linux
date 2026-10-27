@@ -5,7 +5,7 @@ import argparse
 import os
 import sys
 
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -38,6 +38,7 @@ from ..device import (
     Lighting,
     find_devices,
 )
+from ..layout import EVDEV_TO_INDEX
 from . import theme
 from .i18n import tr
 from .widgets import KeyboardView, Swatch, Toast, Toggle
@@ -521,6 +522,9 @@ class MainWindow(QMainWindow):
         self.current = "actuation"
         self.set_legends(self.settings.value("legends", "de"))
 
+        self.pressed: set[int] = set()
+        QApplication.instance().installEventFilter(self)
+
         self.poll = QTimer(self)
         self.poll.setInterval(2000)
         self.poll.timeout.connect(self.check_connection)
@@ -539,6 +543,33 @@ class MainWindow(QMainWindow):
         self.pages["lighting"].view.layout_name = name
         self.pages["actuation"].view.update()
         self.pages["lighting"].view.update()
+
+    # live key highlighting ----------------------------------------------
+    def _views(self):
+        return (self.pages["actuation"].view, self.pages["lighting"].view)
+
+    def _set_pressed(self, keys: set[int]):
+        self.pressed = keys
+        for v in self._views():
+            v.pressed = keys
+            v.update()
+
+    def eventFilter(self, obj, event):
+        et = event.type()
+        if et in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease) and self.isActiveWindow():
+            if QApplication.activeModalWidget() is not None or QApplication.activePopupWidget() is not None:
+                return False
+            idx = EVDEV_TO_INDEX.get(event.nativeScanCode() - 8)
+            if idx is None:
+                return False
+            if not event.isAutoRepeat():
+                keys = set(self.pressed)
+                (keys.add if et == QEvent.Type.KeyPress else keys.discard)(idx)
+                self._set_pressed(keys)
+            return True  # keep keys from triggering buttons/sliders while testing
+        if et == QEvent.Type.ApplicationDeactivate and self.pressed:
+            self._set_pressed(set())
+        return False
 
     # connection ---------------------------------------------------------
     def _set_status(self, connected: bool, text: str):

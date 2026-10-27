@@ -63,3 +63,9 @@ def test_rapid_trigger_write_keeps_actuation():
     assert kb.read_trigger()[5] == (15, 3)
     kb.write_trigger({6: (2.0, 4.0)})
     assert kb.read_trigger()[6] == (20, 40)
+
+
+def test_package_version_and_cli_import():
+    import kb65he
+    import kb65he.cli  # noqa: F401
+    assert kb65he.__version__
