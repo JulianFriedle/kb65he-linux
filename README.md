@@ -23,7 +23,7 @@ over hidraw, so no driver, Wine or VM is needed.
 
 Settings are stored on the keyboard itself, so they persist on other computers.
 
-Not yet supported: key remapping, SOCD, DKS.
+Experimental: key remapping (`kb65he keymap`, read-only view in the GUI). Not yet supported: SOCD, DKS.
 See [docs/PROTOCOL.md](docs/PROTOCOL.md) for what is known so far.
 
 ## Supported hardware
@@ -87,6 +87,8 @@ kb65he profile list
 kb65he profile load Gaming
 kb65he backup ~/kb65he-backup.json  # any file
 kb65he restore ~/kb65he-backup.json
+kb65he keymap                       # show the key assignment (normal + Fn layer)
+kb65he keymap set G PAUSE --fn --experimental   # EXPERIMENTAL, see docs/TESTPLAN-remapping.md
 kb65he -v info                      # show raw packets
 ```
 

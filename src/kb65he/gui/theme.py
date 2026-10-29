@@ -77,6 +77,13 @@ QLineEdit {{
     selection-background-color: {ACCENT}; selection-color: {ACCENT_TEXT};
 }}
 QLineEdit:focus {{ border-color: {ACCENT}; }}
+QTableWidget {{
+    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px;
+    gridline-color: {BORDER}; selection-background-color: {SURFACE_3};
+}}
+QHeaderView::section {{
+    background: {SURFACE_2}; color: {MUTED}; border: none; padding: 6px 10px; font-weight: 600;
+}}
 QFrame#divider {{ background: {BORDER}; border: none; }}
 QMessageBox {{ background: {SURFACE}; }}
 QMessageBox QLabel {{ font-size: 14px; padding: 6px 4px; }}
