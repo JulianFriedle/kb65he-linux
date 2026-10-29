@@ -72,7 +72,8 @@ def test_write_packets_never_reach_the_device():
 def test_scan_sends_only_odd_ids_and_classifies():
     dev = pr.FakeProbeDevice()
     lines = []
-    res = pr.run_scan(pr.ReadOnlyLink(dev), pr.DEFAULT_IDS, sleep=lambda _s: None, log=lines.append)
+    res = pr.run_scan(pr.ReadOnlyLink(dev), pr.DEFAULT_IDS, sleep=lambda _s: None, log=lines.append,
+                      max_timeouts=len(pr.DEFAULT_IDS) + 1)
     assert dev.sent and all((p[1] & 0x3F) & 1 for p in dev.sent)
     assert all(p[1] >> 6 == 0 and p[3] == 0 for p in dev.sent)
     assert len(dev.sent) == len(pr.DEFAULT_IDS) + 2          # control before and after
@@ -285,3 +286,30 @@ def test_hidraw_device_exchange_over_socketpair():
     dev.close()
     a.close()
     b.close()
+
+
+def test_scan_stops_after_three_unanswered_requests():
+    # real fw: ~24 unanswered requests made the keyboard drop off the bus
+    dev = pr.FakeProbeDevice()
+    lines = []
+    res = pr.run_scan(pr.ReadOnlyLink(dev), [0x03, 0x09, 0x0F, 0x11, 0x13], sleep=lambda _s: None,
+                      log=lines.append)
+    probes = [r for r in res["results"] if r["role"] == "probe"]
+    assert [r["cmd"] for r in probes] == [0x03, 0x09, 0x0F]
+    assert res["summary"]["stopped_early"] == "3 unanswered requests in a row"
+    assert res["results"][-1]["role"] == "control-after"
+    assert any("stopping early" in line for line in lines)
+
+
+def test_scan_handles_device_disappearing():
+    class Gone(pr.FakeProbeDevice):
+        def exchange(self, packet, timeout):
+            if packet[1] & 0x3F == 0x09:
+                raise OSError(5, "Input/output error")
+            return super().exchange(packet, timeout)
+
+    res = pr.run_scan(pr.ReadOnlyLink(Gone()), [0x03, 0x09, 0x0B], sleep=lambda _s: None, log=lambda _l: None)
+    assert res["results"][-1]["outcome"] == "device_lost"
+    assert res["summary"]["stopped_early"] == "device_lost"
+    assert not res["summary"]["control_ok_after"]
+    json.dumps(res)

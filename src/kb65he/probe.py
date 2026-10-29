@@ -255,8 +255,13 @@ class ReadOnlyLink:
 
 # ---------------------------------------------------------------- scan
 def run_scan(link: ReadOnlyLink, ids: list[int], timeout: float = 0.5, pause: float = 0.05,
-             sleep=time.sleep, log=print) -> dict:
-    """Send one empty read request per id (plus control reads before and after)."""
+             sleep=time.sleep, log=print, max_timeouts: int = 3) -> dict:
+    """Send one empty read request per id (plus control reads before and after).
+
+    Stops early after ``max_timeouts`` unanswered requests in a row, or if the
+    device disappears: on real hardware (fw 2025) ~24 unanswered requests made
+    the keyboard drop off the bus until it was replugged.
+    """
     for c in ids:
         if not is_read_cmd(c):
             raise UnsafeCommand(f"0x{c:02X} is not a read command")
@@ -264,7 +269,14 @@ def run_scan(link: ReadOnlyLink, ids: list[int], timeout: float = 0.5, pause: fl
     stray_all: list[str] = []
 
     def one(cmd: int, role: str) -> dict:
-        ex = link.request(cmd, timeout)
+        try:
+            ex = link.request(cmd, timeout)
+        except OSError as e:
+            entry = {"cmd": cmd, "cmd_hex": f"0x{cmd:02X}", "role": role, "outcome": "device_lost",
+                     "error": str(e), "elapsed_ms": 0.0}
+            results.append(entry)
+            log(f"0x{cmd:02X}  device lost ({e}) - stopping. Unplug and replug the keyboard.")
+            return entry
         info = analyse_response(ex.response) if ex.response is not None else None
         outcome = classify(info)
         entry = {"cmd": cmd, "cmd_hex": f"0x{cmd:02X}", "role": role, "outcome": outcome,
@@ -279,18 +291,30 @@ def run_scan(link: ReadOnlyLink, ids: list[int], timeout: float = 0.5, pause: fl
         log(format_scan_line(entry))
         return entry
 
+    aborted = None
     control_before = one(CONTROL_CMD, "control-before")
     alive = control_before["outcome"] == "data"
     if not alive:
         log("control read 0x05 got no data - not scanning further (is the right device open?)")
     else:
+        in_a_row = 0
         for cmd in ids:
             sleep(pause)
-            one(cmd, "probe")
-        sleep(pause)
-        control_after = one(CONTROL_CMD, "control-after")
-        if control_after["outcome"] != "data":
-            log("WARNING: the keyboard no longer answers the control read. Unplug and replug it.")
+            outcome = one(cmd, "probe")["outcome"]
+            if outcome == "device_lost":
+                aborted = "device_lost"
+                break
+            in_a_row = in_a_row + 1 if outcome == "timeout" else 0
+            if in_a_row >= max_timeouts:
+                aborted = f"{max_timeouts} unanswered requests in a row"
+                log(f"stopping early: {aborted} (the firmware ignores unknown ids; "
+                    "too many of them made the keyboard drop off the bus)")
+                break
+        if aborted != "device_lost":
+            sleep(pause)
+            control_after = one(CONTROL_CMD, "control-after")
+            if control_after["outcome"] != "data":
+                log("WARNING: the keyboard no longer answers the control read. Unplug and replug it.")
     probes = [r for r in results if r["role"] == "probe"]
     summary = {
         "sent": len(results),
@@ -301,6 +325,7 @@ def run_scan(link: ReadOnlyLink, ids: list[int], timeout: float = 0.5, pause: fl
         "empty_answers": [r["cmd_hex"] for r in probes if r["outcome"] == "empty"],
         "error_status": {r["cmd_hex"]: r["status_name"] for r in probes if r["outcome"].startswith("status:")},
         "timeouts": [r["cmd_hex"] for r in probes if r["outcome"] == "timeout"],
+        "stopped_early": aborted,
         "control_ok_after": bool(results) and results[-1]["role"] == "control-after"
         and results[-1]["outcome"] == "data",
     }

@@ -296,3 +296,20 @@ were deliberately **not** added. As soon as the probe finds a command, the plan 
 `KB65HE.read_key_depth() -> dict[int, float]` next to `read_trigger()` in `device.py`, plus
 an optional fill bar in `KeyboardView` (`gui/widgets.py`) that is only enabled when the
 device answers the command.
+
+
+## 8. Hardware results (2026-10-29, KB65HE 8k ISO, 3367:5035)
+
+* `--watch 40`: key presses only appear on the normal keyboard interfaces (`hidraw2` report id 1,
+  `hidraw4` report id 2) as plain on/off reports. **Nothing** arrived on the vendor interface
+  (`hidraw3`) or as report-id-4 events while pressing keys. No depth data is pushed.
+* Scan: the control read `0x05` answered; **every unknown odd id timed out** (no answer at all, not
+  even `NOT_SUPPORTED`). After ~23 unanswered requests the keyboard dropped off the bus
+  (`EIO` on hidraw) and had to be replugged. Afterwards it enumerated normally (`3367:5035`), the
+  change counter was unchanged (nothing was written), but the trigger table read back different
+  rapid-trigger values than before (1.0 mm instead of 0.2 mm) - under investigation (possibly the
+  second trigger table / "low latency" layer becoming active after the reset).
+* Consequence for the probe: the scan now stops after 3 unanswered requests in a row and handles a
+  disappearing device. **Do not run the full scan again.**
+* Conclusion: no live key-depth data is available from this firmware through the configuration
+  interface. Issue #3 can be closed as "not possible with the current firmware".
