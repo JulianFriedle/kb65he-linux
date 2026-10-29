@@ -11,9 +11,11 @@ from .qt import (
     QColor,
     QColorDialog,
     QComboBox,
+    QEasingCurve,
     QEvent,
     QFileDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QIcon,
@@ -21,6 +23,7 @@ from .qt import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPropertyAnimation,
     QPushButton,
     QSettings,
     QSlider,
@@ -715,7 +718,22 @@ class MainWindow(QMainWindow):
         self.current = key
         getattr(self, f"nav_{key}").setChecked(True)
         if self.kb is not None:
-            self.stack.setCurrentWidget(self.pages[key])
+            page = self.pages[key]
+            changed = self.stack.currentWidget() is not page
+            self.stack.setCurrentWidget(page)
+            if changed:
+                self._fade_in(page)
+
+    def _fade_in(self, page: QWidget):
+        fx = QGraphicsOpacityEffect(page)
+        page.setGraphicsEffect(fx)
+        anim = QPropertyAnimation(fx, b"opacity", page)
+        anim.setDuration(180)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.finished.connect(lambda: page.setGraphicsEffect(None))
+        anim.start()
 
     def set_legends(self, name: str):
         self.pages["actuation"].view.layout_name = name
