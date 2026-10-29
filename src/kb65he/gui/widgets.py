@@ -1,6 +1,9 @@
 """Custom widgets: keyboard view, toggle switch, colour swatch, toast."""
 from __future__ import annotations
 
+import math
+import time
+
 from .qt import (
     Property,
     QAbstractButton,
@@ -35,6 +38,45 @@ def _mix(a: QColor, b: QColor, t: float) -> QColor:
     )
 
 
+def _wave(v: float) -> float:
+    return 0.5 + 0.5 * math.sin(2 * math.pi * v)
+
+
+def effect_look(effect: int, cx: float, cy: float, i: int, n: int, t: float) -> tuple[float, float | None]:
+    """Rough on-screen imitation of the firmware effects (preview only).
+
+    Returns (level 0..1, hue 0..1 or None to use the chosen colour). `t` is
+    time already scaled by the speed setting; cx/cy are the key centre in units.
+    """
+    w, h = WIDTH_U, HEIGHT_U
+    if effect == 0:       # spectral_cycle: whole board cycles through the colours
+        return 1.0, (t * 0.15) % 1.0
+    if effect == 2:       # surf_left
+        return 0.15 + 0.85 * _wave(cx / w * 1.2 - t * 0.4), None
+    if effect == 3:       # breathing
+        return 0.1 + 0.9 * _wave(t * 0.3), None
+    if effect == 4:       # snake: a head running through the keys with a tail
+        head = (t * 14) % n
+        return max(0.0, 1 - ((head - i) % n) / 10), None
+    if effect == 5:       # magnetic: pulses around a point drifting left and right
+        px = w / 2 + math.sin(t * 0.3) * w * 0.35
+        d = math.hypot(cx - px, (cy - h / 2) * 1.5)
+        return max(0.1, 1 - d / 4.5), None
+    if effect == 6:       # surf_mid: waves leave the middle
+        return 0.15 + 0.85 * _wave(abs(cx - w / 2) / w * 1.5 - t * 0.4), None
+    if effect == 7:       # laser: a beam sweeping to and fro
+        px = (0.5 + 0.5 * math.sin(t * 0.5)) * w
+        return max(0.08, 1 - abs(cx - px) / 1.6), None
+    if effect == 8:       # cross_surf: diagonal waves
+        return 0.15 + 0.85 * _wave((cx / w + cy / h) * 0.9 - t * 0.4), None
+    if effect == 9:       # traffic: rows light up in turn
+        return (1.0 if int(t * 0.8 + cy) % 3 == 0 else 0.2), None
+    if effect == 10:      # ripple: rings spreading from the centre
+        d = math.hypot(cx - w / 2, (cy - h / 2) * 1.5)
+        return 0.1 + 0.9 * max(0.0, math.sin(2 * math.pi * (d / 6 - t * 0.35))) ** 2, None
+    return 1.0, None      # static and unknown effects
+
+
 class KeyboardView(QWidget):
     """Draws the 69-key ISO layout.
 
@@ -59,6 +101,13 @@ class KeyboardView(QWidget):
         self.tint = QColor(theme.ACCENT)
         self.tint_strength = 1.0
         self.lit = True
+        self.effect = 1       # lighting mode: animated preview of this effect
+        self.speed = 1
+        self._t = 0.0
+        self._last = time.monotonic()
+        self._anim = QTimer(self)
+        self._anim.setInterval(33)
+        self._anim.timeout.connect(self._tick)
         # keymap mode
         self.assign: dict[int, str] = {}       # short label drawn on the key
         self.assign_tip: dict[int, str] = {}   # tooltip text
@@ -85,6 +134,36 @@ class KeyboardView(QWidget):
         return int(w * HEIGHT_U / WIDTH_U)
 
     # animation ---------------------------------------------------------
+    def _animated(self) -> bool:
+        return self.mode == "lighting" and self.lit and self.effect not in (1,) and self.isVisible()
+
+    def set_effect(self, effect: int, speed: int):
+        self.effect, self.speed = effect, speed
+        self.sync_animation()
+        self.update()
+
+    def sync_animation(self):
+        if self._animated():
+            if not self._anim.isActive():
+                self._last = time.monotonic()
+                self._anim.start()
+        else:
+            self._anim.stop()
+
+    def _tick(self):
+        now = time.monotonic()
+        self._t += (now - self._last) * (0.6 + 0.6 * self.speed)
+        self._last = now
+        self.update()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.sync_animation()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._anim.stop()
+
     def _fade_step(self):
         busy = False
         for lvl, targets, rate in ((self._hover_lvl, {self._hover}, 0.25),
@@ -195,8 +274,13 @@ class KeyboardView(QWidget):
                 # 0.1 mm -> strong tint, 4.0 mm -> none
                 t = 0.0 if v is None else (4.0 - v) / 3.9 * 0.08
                 fill = _mix(base, accent, t + (0.26 if sel else 0.0))
+            elif not self.lit:
+                fill = base
             else:
-                fill = _mix(base, self.tint, 0.42 * self.tint_strength) if self.lit else base
+                level, hue = effect_look(self.effect, key.x + key.w / 2, key.y + 0.5,
+                                         key.index, len(KEYS), self._t)
+                col = self.tint if hue is None else QColor.fromHsvF(hue, 0.85, 1.0)
+                fill = _mix(base, col, 0.42 * self.tint_strength * level)
             h = self._hover_lvl.get(key.index, 0.0)
             if h:
                 fill = _mix(fill, fill.lighter(118), h)

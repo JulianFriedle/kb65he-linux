@@ -17,6 +17,7 @@ over hidraw, so no driver, Wine or VM is needed.
 | **Rapid trigger** | per key, 0.1–3.9 mm or off |
 | **Lighting** | on/off, 11 effects, brightness, speed, 7 colour slots |
 | **Profiles** | save, load, import and export all settings as JSON |
+| **Live preview** | the lighting page shows an animated preview of the chosen effect |
 | **Live key view** | pressed keys light up in the GUI |
 | **Key map** | remap any key on the normal and the Fn layer (keys, media, lighting, mouse buttons), with undo and automatic backups |
 | **Device info** | serial, change counter |

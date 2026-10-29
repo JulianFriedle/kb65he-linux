@@ -384,7 +384,7 @@ class LightingPage(QWidget):
         self.view.lit = li.on
         self.view.tint = QColor(*li.colors[li.color_index]) if li.color_index < 7 else QColor(theme.ACCENT)
         self.view.tint_strength = 0.25 + 0.75 * li.brightness / BRIGHTNESS_MAX
-        self.view.update()
+        self.view.set_effect(li.effect, li.speed)
 
     def _changed(self, *_):
         if self._loading:
