@@ -72,6 +72,14 @@ QComboBox QAbstractItemView {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; selection-background-color: {SURFACE_3};
     outline: none; padding: 4px;
 }}
+QLineEdit {{
+    background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 9px; padding: 8px 12px;
+    selection-background-color: {ACCENT}; selection-color: {ACCENT_TEXT};
+}}
+QLineEdit:focus {{ border-color: {ACCENT}; }}
+QFrame#divider {{ background: {BORDER}; border: none; }}
+QMessageBox {{ background: {SURFACE}; }}
+QMessageBox QLabel {{ font-size: 14px; padding: 6px 4px; }}
 QToolTip {{ background: {SURFACE_3}; color: {TEXT}; border: 1px solid {BORDER}; padding: 4px 8px; }}
 QLabel#toast {{
     background: {SURFACE_3}; border: 1px solid {BORDER}; border-radius: 10px;
