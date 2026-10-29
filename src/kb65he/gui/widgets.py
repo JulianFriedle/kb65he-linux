@@ -7,6 +7,7 @@ from .qt import (
     QColor,
     QEasingCurve,
     QFont,
+    QGraphicsOpacityEffect,
     QLabel,
     QPainter,
     QPainterPath,
@@ -53,7 +54,7 @@ class KeyboardView(QWidget):
         self.values: dict[int, float] = {}
         self.rt: dict[int, float] = {}
         self.display = "actuation"  # or "rt"
-        self.pressed: set[int] = set()
+        self._pressed: set[int] = set()
         self.selected: set[int] = set()
         self.tint = QColor(theme.ACCENT)
         self.tint_strength = 1.0
@@ -64,6 +65,12 @@ class KeyboardView(QWidget):
         self.changed: set[int] = set()         # differs from the factory default
         self.locked: set[int] = set()          # cannot be remapped
         self._hover: int | None = None
+        # eased 0..1 levels so hover and key presses fade instead of snapping
+        self._hover_lvl: dict[int, float] = {}
+        self._press_lvl: dict[int, float] = {}
+        self._fade = QTimer(self)
+        self._fade.setInterval(16)
+        self._fade.timeout.connect(self._fade_step)
         self._drag_value: bool | None = None
         self.setMouseTracking(True)
         self.setMinimumHeight(200)
@@ -76,6 +83,41 @@ class KeyboardView(QWidget):
 
     def heightForWidth(self, w):
         return int(w * HEIGHT_U / WIDTH_U)
+
+    # animation ---------------------------------------------------------
+    def _fade_step(self):
+        busy = False
+        for lvl, targets, rate in ((self._hover_lvl, {self._hover}, 0.25),
+                                   (self._press_lvl, self.pressed, 0.4)):
+            for k in list(lvl):
+                goal = 1.0 if k in targets else 0.0
+                v = lvl[k]
+                v = min(goal, v + rate) if goal > v else max(goal, v - rate * 0.6)
+                if v == 0.0:
+                    del lvl[k]
+                else:
+                    lvl[k] = v
+                    busy = busy or v != goal
+        self.update()
+        if not busy:
+            self._fade.stop()
+
+    def _start_fade(self):
+        for k in self.pressed:
+            self._press_lvl.setdefault(k, 0.0)
+        if self._hover is not None:
+            self._hover_lvl.setdefault(self._hover, 0.0)
+        if not self._fade.isActive():
+            self._fade.start()
+
+    @property
+    def pressed(self) -> set[int]:
+        return self._pressed
+
+    @pressed.setter
+    def pressed(self, keys: set[int]):
+        self._pressed = set(keys)
+        self._start_fade()
 
     # geometry ----------------------------------------------------------
     def _unit(self) -> tuple[float, float, float]:
@@ -143,7 +185,6 @@ class KeyboardView(QWidget):
             path = self._key_path(key, u, ox, oy)
             rect = path.boundingRect()
             sel = key.index in self.selected
-            hover = key.index == self._hover
 
             if self.mode == "keymap":
                 fill = _mix(base, accent, (0.22 if key.index in self.changed else 0.0) + (0.2 if sel else 0.0))
@@ -156,10 +197,12 @@ class KeyboardView(QWidget):
                 fill = _mix(base, accent, t + (0.26 if sel else 0.0))
             else:
                 fill = _mix(base, self.tint, 0.42 * self.tint_strength) if self.lit else base
-            if hover:
-                fill = fill.lighter(118)
-            if key.index in self.pressed:
-                fill = _mix(fill, accent, 0.75)
+            h = self._hover_lvl.get(key.index, 0.0)
+            if h:
+                fill = _mix(fill, fill.lighter(118), h)
+            pr = self._press_lvl.get(key.index, 0.0)
+            if pr:
+                fill = _mix(fill, accent, 0.75 * pr)
             p.fillPath(path, fill)
 
             pen = QPen(QColor(theme.ACCENT) if sel else QColor(theme.BORDER))
@@ -230,6 +273,7 @@ class KeyboardView(QWidget):
         k = self._key_at(e.position())
         if k != self._hover:
             self._hover = k
+            self._start_fade()
             self.setToolTip(self._tooltip(k))
             if self.mode in ("actuation", "keymap"):
                 self.setCursor(Qt.CursorShape.PointingHandCursor if k is not None else Qt.CursorShape.ArrowCursor)
@@ -251,7 +295,7 @@ class KeyboardView(QWidget):
 
     def leaveEvent(self, _e):
         self._hover = None
-        self.update()
+        self._start_fade()
 
     def _apply(self, k: int):
         before = k in self.selected
@@ -326,6 +370,31 @@ class Swatch(QAbstractButton):
         self.setCheckable(True)
         self.setFixedSize(34, 34)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._ring = 0.0
+        self._ring_anim = QPropertyAnimation(self, b"ring", self)
+        self._ring_anim.setDuration(160)
+        self._ring_anim.setEasingCurve(QEasingCurve.Type.OutBack)
+        self.toggled.connect(self._animate_ring)
+
+    def _animate_ring(self, on):
+        self._ring_anim.stop()
+        self._ring_anim.setEndValue(1.0 if on else 0.0)
+        self._ring_anim.start()
+
+    def get_ring(self):
+        return self._ring
+
+    def set_ring(self, v):
+        self._ring = v
+        self.update()
+
+    ring = Property(float, get_ring, set_ring)
+
+    def setChecked(self, on):  # no animation for programmatic changes
+        super().setChecked(on)
+        self._ring_anim.stop()
+        self._ring = 1.0 if on else 0.0
+        self.update()
 
     def mouseDoubleClickEvent(self, _e):
         self.doubleClicked.emit()
@@ -333,10 +402,14 @@ class Swatch(QAbstractButton):
     def paintEvent(self, _e):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if self.isChecked():
-            p.setPen(QPen(QColor(theme.TEXT), 2))
+        if self._ring > 0.0:
+            # ring grows from the dot to its full size
+            inset = 1 + (1 - min(self._ring, 1.0)) * 5
+            c = QColor(theme.TEXT)
+            c.setAlphaF(min(self._ring, 1.0))
+            p.setPen(QPen(c, 2))
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawEllipse(QRectF(1, 1, self.width() - 2, self.height() - 2))
+            p.drawEllipse(QRectF(inset, inset, self.width() - 2 * inset, self.height() - 2 * inset))
         p.setPen(QPen(QColor(0, 0, 0, 80), 1))
         p.setBrush(self.color)
         p.drawEllipse(QRectF(6, 6, self.width() - 12, self.height() - 12))
@@ -348,9 +421,28 @@ class Toast(QLabel):
         super().__init__(parent)
         self.setObjectName("toast")
         self.hide()
+        self._fx = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self._fx)
+        self._anim = QPropertyAnimation(self._fx, b"opacity", self)
+        self._anim.finished.connect(self._done)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
-        self._timer.timeout.connect(self.hide)
+        self._timer.timeout.connect(self._fade_out)
+
+    def _fade_to(self, value: float, ms: int):
+        self._anim.stop()
+        self._anim.setDuration(ms)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim.setStartValue(self._fx.opacity())
+        self._anim.setEndValue(value)
+        self._anim.start()
+
+    def _fade_out(self):
+        self._fade_to(0.0, 220)
+
+    def _done(self):
+        if self._fx.opacity() <= 0.0:
+            self.hide()
 
     def show_message(self, text: str, error: bool = False):
         self.setText(text)
@@ -359,5 +451,8 @@ class Toast(QLabel):
         par = self.parentWidget()
         self.move((par.width() - self.width()) // 2, par.height() - self.height() - 24)
         self.raise_()
+        if not self.isVisible():
+            self._fx.setOpacity(0.0)
         self.show()
+        self._fade_to(1.0, 180)
         self._timer.start(2600)

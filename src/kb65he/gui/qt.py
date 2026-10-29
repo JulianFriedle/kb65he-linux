@@ -52,6 +52,7 @@ QColorDialog = _W.QColorDialog
 QComboBox = _W.QComboBox
 QFileDialog = _W.QFileDialog
 QFrame = _W.QFrame
+QGraphicsOpacityEffect = _W.QGraphicsOpacityEffect
 QGridLayout = _W.QGridLayout
 QHeaderView = _W.QHeaderView
 QHBoxLayout = _W.QHBoxLayout
