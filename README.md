@@ -88,6 +88,7 @@ kb65he profile load Gaming
 kb65he backup ~/kb65he-backup.json  # any file
 kb65he restore ~/kb65he-backup.json
 kb65he -v info                      # show raw packets
+kb65he probe --help                 # read-only research probe (live key depth, issue #3)
 ```
 
 ## Development
