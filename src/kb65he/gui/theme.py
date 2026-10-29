@@ -66,6 +66,7 @@ QSlider::sub-page:horizontal:disabled {{ background: {FAINT}; }}
 
 QComboBox {{
     background: {SURFACE_2}; border: 1px solid {BORDER}; border-radius: 9px; padding: 6px 10px;
+    combobox-popup: 0;  /* list below the box: a click opens it, it does not close on release */
 }}
 QComboBox::drop-down {{ border: none; width: 20px; }}
 QComboBox QAbstractItemView {{
