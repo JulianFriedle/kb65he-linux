@@ -20,20 +20,12 @@ from .keymap import (
     LAYER_NAMES,
     TARGETS,
     Entry,
-    ExperimentalDisabled,
     KeymapError,
     KeymapVerifyError,
     function_name,
     parse_target,
 )
 from .layout import KEY_BY_INDEX, NAME_TO_INDEX
-
-EXPERIMENTAL_HINT = (
-    "Writing the key map is EXPERIMENTAL: it has not been verified on hardware yet and a wrong\n"
-    "table can make keys unusable. A backup is saved to ~/.config/kb65he/backups first.\n"
-    "See docs/TESTPLAN-remapping.md, then repeat the command with --experimental to proceed."
-)
-
 
 def _key_label(k: int) -> str:
     key = KEY_BY_INDEX[k]
@@ -92,12 +84,12 @@ def _run_keymap(kb: KB65HE, a, target: int | None) -> None:
             new = before
             what = "current key map written back unchanged"
         print(what)
-        after = profiles.write_keymap_safely(kb, new, experimental=True, backups=backups)
+        after = profiles.write_keymap_safely(kb, new, backups=backups)
         for b in backups:
             print(f"backup:   {b}")
         print("written and verified by read-back" if after == new else "written")
-        print("undo with: kb65he restore <backup> --only keymap --experimental")
-    except (KeymapError, KeymapVerifyError, ExperimentalDisabled, profiles.ProfileError) as e:
+        print("undo with: kb65he restore <backup> --only keymap")
+    except (KeymapError, KeymapVerifyError, profiles.ProfileError) as e:
         sys.exit(f"error: {e}")
     except (TimeoutError, OSError) as e:
         sys.exit(f"error talking to the keyboard: {e}")
@@ -113,18 +105,18 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("info", help="show device information")
     sub.add_parser("lighting", help="show lighting settings")
 
-    km = sub.add_parser("keymap", help="show or change the key assignment (writing is EXPERIMENTAL)")
+    km = sub.add_parser("keymap", help="show or change the key assignment")
     ksub = km.add_subparsers(dest="kcmd")
     ksub.add_parser("targets", help="list the names accepted as remap targets")
-    ks = ksub.add_parser("set", help="(experimental) assign a function to one key")
+    ks = ksub.add_parser("set", help="assign a function to one key (a backup is saved first)")
     ks.add_argument("key", help="key name or number as in `kb65he actuation`")
     ks.add_argument("target", help="e.g. F5, A, ESC, VOLUP, MUTE (see `kb65he keymap targets`)")
     ks.add_argument("--fn", action="store_true", help="change the Fn layer instead of the normal layer")
-    ks.add_argument("--experimental", action="store_true", help="confirm that you accept the risk")
-    kr = ksub.add_parser("reset-default", help="(experimental) write the factory default key map")
-    kr.add_argument("--experimental", action="store_true", help="confirm that you accept the risk")
-    kw = ksub.add_parser("rewrite", help="(experimental) write the current key map back unchanged (test)")
-    kw.add_argument("--experimental", action="store_true", help="confirm that you accept the risk")
+    ks.add_argument("--experimental", action="store_true", help=argparse.SUPPRESS)  # no longer needed, kept for old scripts
+    kr = ksub.add_parser("reset-default", help="write the factory default key map")
+    kr.add_argument("--experimental", action="store_true", help=argparse.SUPPRESS)  # no longer needed, kept for old scripts
+    kw = ksub.add_parser("rewrite", help="write the current key map back unchanged (test)")
+    kw.add_argument("--experimental", action="store_true", help=argparse.SUPPRESS)  # no longer needed, kept for old scripts
     act = sub.add_parser("actuation", help="show or set actuation points")
     act.add_argument("mm", type=float, nargs="?", help="new actuation point 0.1..4.0 mm")
     act.add_argument("keys", nargs="*", help="key names or numbers (e.g. W A S D)")
@@ -145,13 +137,13 @@ def main(argv: list[str] | None = None) -> None:
         sp.add_argument("name")
         if name == "load":
             sp.add_argument("--only", choices=["trigger", "lighting", "keymap"], help="apply only one part")
-            sp.add_argument("--experimental", action="store_true", help="needed for --only keymap")
+            sp.add_argument("--experimental", action="store_true", help=argparse.SUPPRESS)  # no longer needed
     bk = sub.add_parser("backup", help="save current settings to a JSON file")
     bk.add_argument("file")
     rs = sub.add_parser("restore", help="apply settings from a JSON file")
     rs.add_argument("file")
     rs.add_argument("--only", choices=["trigger", "lighting", "keymap"], help="apply only one part")
-    rs.add_argument("--experimental", action="store_true", help="needed for --only keymap")
+    rs.add_argument("--experimental", action="store_true", help=argparse.SUPPRESS)  # no longer needed
 
     raw = sub.add_parser("trigger-raw", help="(research) write raw trigger bytes A B for one key")
     raw.add_argument("key")
@@ -191,15 +183,11 @@ def main(argv: list[str] | None = None) -> None:
                 names = [n for n, k in TARGETS.values() if k == kind]
                 print(f"{kind:6s} {' '.join(names)}")
             return
-        if a.kcmd in ("set", "reset-default", "rewrite") and not a.experimental:
-            sys.exit(EXPERIMENTAL_HINT)
         if a.kcmd == "set":
             try:
                 keymap_target = parse_target(a.target)
             except KeymapError as e:
                 sys.exit(str(e))
-    if getattr(a, "only", None) == "keymap" and not a.experimental:
-        sys.exit(EXPERIMENTAL_HINT)
 
     # validate profile files before touching the device
     prof_in = None
@@ -272,12 +260,11 @@ def main(argv: list[str] | None = None) -> None:
                     prof = prof_in
                     parts = (a.only,) if a.only else profiles.PARTS
                     backups: list = []
-                    done = profiles.apply(kb, prof, parts, experimental=getattr(a, "experimental", False),
-                                          backups=backups)
+                    done = profiles.apply(kb, prof, parts, backups=backups)
                     for b in backups:
                         print(f"key map backup: {b}")
                     print(f"applied {prof.get('name', '')}: {', '.join(done) or 'nothing'}")
-            except (profiles.ProfileError, KeymapError, KeymapVerifyError, ExperimentalDisabled) as e:
+            except (profiles.ProfileError, KeymapError, KeymapVerifyError) as e:
                 sys.exit(str(e))
         elif a.cmd == "trigger-raw":
             from .protocol import Cmd

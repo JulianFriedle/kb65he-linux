@@ -39,6 +39,7 @@ class KeyboardView(QWidget):
 
     mode "actuation": keys show their actuation value and can be selected.
     mode "lighting":  keys are tinted with a colour (preview only).
+    mode "keymap":    keys show their assignment; one key can be selected.
     """
 
     selectionChanged = Signal()
@@ -57,6 +58,11 @@ class KeyboardView(QWidget):
         self.tint = QColor(theme.ACCENT)
         self.tint_strength = 1.0
         self.lit = True
+        # keymap mode
+        self.assign: dict[int, str] = {}       # short label drawn on the key
+        self.assign_tip: dict[int, str] = {}   # tooltip text
+        self.changed: set[int] = set()         # differs from the factory default
+        self.locked: set[int] = set()          # cannot be remapped
         self._hover: int | None = None
         self._drag_value: bool | None = None
         self.setMouseTracking(True)
@@ -139,7 +145,11 @@ class KeyboardView(QWidget):
             sel = key.index in self.selected
             hover = key.index == self._hover
 
-            if self.mode == "actuation":
+            if self.mode == "keymap":
+                fill = _mix(base, accent, (0.22 if key.index in self.changed else 0.0) + (0.2 if sel else 0.0))
+                if key.index in self.locked:
+                    fill = _mix(fill, QColor(theme.BG), 0.45)
+            elif self.mode == "actuation":
                 v = self.values.get(key.index)
                 # 0.1 mm -> strong tint, 4.0 mm -> none
                 t = 0.0 if v is None else (4.0 - v) / 3.9 * 0.08
@@ -160,6 +170,8 @@ class KeyboardView(QWidget):
 
             legend = key.labels.get(self.layout_name, "")
             text_col = QColor(theme.TEXT) if (sel or self.mode == "lighting") else QColor(theme.MUTED)
+            if self.mode == "keymap" and key.index in self.assign:
+                text_col = QColor(theme.FAINT)
             if key.index in self.pressed:
                 text_col = QColor(theme.ACCENT_TEXT)
             p.setPen(text_col)
@@ -170,6 +182,19 @@ class KeyboardView(QWidget):
             else:
                 lrect = rect.adjusted(pad, pad * 0.8, -pad, -pad)
             p.drawText(lrect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, legend)
+
+            if self.mode == "keymap" and key.index in self.assign:
+                p.setFont(value_font)
+                p.setPen(QColor(theme.ACCENT_TEXT) if key.index in self.pressed
+                         else QColor(theme.TEXT))
+                vrect = rect.adjusted(pad, pad, -pad, -pad * 0.8)
+                txt = self.assign[key.index]
+                f = QFont(value_font)
+                while f.pixelSize() > 8 and p.fontMetrics().horizontalAdvance(txt) > vrect.width():
+                    f.setPixelSize(f.pixelSize() - 1)
+                    p.setFont(f)
+                txt = p.fontMetrics().elidedText(txt, Qt.TextElideMode.ElideRight, int(vrect.width()))
+                p.drawText(vrect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom, txt)
 
             if self.mode == "actuation" and key.index in self.values:
                 p.setFont(value_font)
@@ -190,10 +215,13 @@ class KeyboardView(QWidget):
 
     # interaction -------------------------------------------------------
     def mousePressEvent(self, e):
-        if self.mode != "actuation" or e.button() != Qt.MouseButton.LeftButton:
+        if self.mode not in ("actuation", "keymap") or e.button() != Qt.MouseButton.LeftButton:
             return
         k = self._key_at(e.position())
         if k is None:
+            return
+        if self.mode == "keymap":
+            self.set_selection({k})
             return
         self._drag_value = k not in self.selected
         self._apply(k)
@@ -203,13 +231,15 @@ class KeyboardView(QWidget):
         if k != self._hover:
             self._hover = k
             self.setToolTip(self._tooltip(k))
-            if self.mode == "actuation":
+            if self.mode in ("actuation", "keymap"):
                 self.setCursor(Qt.CursorShape.PointingHandCursor if k is not None else Qt.CursorShape.ArrowCursor)
             self.update()
         if self._drag_value is not None and k is not None:
             self._apply(k)
 
     def _tooltip(self, k) -> str:
+        if self.mode == "keymap":
+            return self.assign_tip.get(k, "") if k is not None else ""
         if k is None or self.mode != "actuation" or k not in self.values:
             return ""
         rt = self.rt.get(k)

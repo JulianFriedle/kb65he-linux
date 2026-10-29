@@ -1,10 +1,9 @@
 """Profiles: save the keyboard settings to JSON files and apply them again.
 
 A profile contains the trigger table (actuation point + rapid trigger per key)
-and the lighting. The raw key map is stored as well (``keymap_raw``). Restoring it
-is EXPERIMENTAL: it is only written if ``"keymap"`` is requested explicitly in
-``parts`` together with ``experimental=True``, and an automatic backup is saved
-first. Plain ``apply(kb, profile)`` never touches the key map.
+and the lighting. The raw key map is stored as well (``keymap_raw``). It is only
+written if ``"keymap"`` is requested explicitly in ``parts``, and an automatic
+backup is saved first. Plain ``apply(kb, profile)`` never touches the key map.
 
 Profiles live in ``$XDG_CONFIG_HOME/kb65he/profiles`` (default
 ``~/.config/kb65he/profiles``); ``export``/``import`` work with any path.
@@ -18,7 +17,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .keymap import ExperimentalDisabled, Keymap, KeymapError
+from .keymap import Keymap, KeymapError
 from .device import (
     ACTUATION_MAX,
     ACTUATION_MIN,
@@ -33,7 +32,7 @@ from .device import (
 FORMAT = "kb65he-profile"
 VERSION = 1
 PARTS = ("trigger", "lighting")           # applied by default
-PART_KEYMAP = "keymap"                    # experimental, never applied by default
+PART_KEYMAP = "keymap"                    # never applied by default
 ALL_PARTS = PARTS + (PART_KEYMAP,)
 
 
@@ -146,20 +145,16 @@ def validate(profile: dict) -> dict:
     return profile
 
 
-def apply(kb: KB65HE, profile: dict, parts=PARTS, *, experimental: bool = False,
+def apply(kb: KB65HE, profile: dict, parts=PARTS, *,
           backups: list | None = None) -> list[str]:
     """Write a profile to the keyboard. Returns the list of applied parts.
 
-    ``"keymap"`` in ``parts`` (EXPERIMENTAL) needs ``experimental=True``; a backup of
-    the current key map is saved first and its path appended to ``backups``.
+    With ``"keymap"`` in ``parts`` a backup of the current key map is saved first and its path appended to ``backups``.
     Everything is checked before the first write.
     """
     validate(profile)
     keymap = None
     if PART_KEYMAP in parts:
-        if not experimental:
-            raise ExperimentalDisabled(
-                "restoring the key map is experimental and has not been verified on hardware")
         raw = profile.get("keymap_raw")
         if not raw:
             raise ProfileError("this profile contains no key map")
@@ -190,7 +185,7 @@ def apply(kb: KB65HE, profile: dict, parts=PARTS, *, experimental: bool = False,
         ))
         done.append("lighting")
     if keymap is not None:
-        write_keymap_safely(kb, keymap, experimental=True, backups=backups)
+        write_keymap_safely(kb, keymap, backups=backups)
         done.append(PART_KEYMAP)
     return done
 
@@ -221,11 +216,11 @@ def backup_keymap(kb: KB65HE, current: Keymap | None = None) -> Path:
     return write_file(prof, path)
 
 
-def write_keymap_safely(kb: KB65HE, keymap: Keymap, *, experimental: bool = False,
+def write_keymap_safely(kb: KB65HE, keymap: Keymap, *,
                         backups: list | None = None) -> Keymap:
-    """Write a key map after saving an automatic backup (EXPERIMENTAL).
+    """Write a key map after saving an automatic backup.
 
-    Order: experimental flag -> validation -> backup -> write -> read-back compare.
+    Order: validation -> backup -> write -> read-back compare.
     If any step before the write fails, the keyboard is not touched. The backup path
     is appended to ``backups`` if given.
     """
@@ -234,7 +229,7 @@ def write_keymap_safely(kb: KB65HE, keymap: Keymap, *, experimental: bool = Fals
         if backups is not None:
             backups.append(path)
 
-    return kb.write_keymap(keymap, experimental=experimental, before_write=before)
+    return kb.write_keymap(keymap, before_write=before)
 
 
 # --- files -------------------------------------------------------------------

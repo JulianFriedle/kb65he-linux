@@ -92,7 +92,7 @@ read from the keyboard as its factory default; writing the vendor table would di
 
 Status: **read and write verified on hardware** (2026-10-29: a full rewrite read back identical; Fn+G set
 to Pause produced `KEY_PAUSE` on the input device while G alone still produced `KEY_G`).
-Implemented as experimental in `src/kb65he/keymap.py`; hardware test steps are in
+Implemented in `src/kb65he/keymap.py` (CLI `kb65he keymap`, GUI page "Key map"); hardware test steps are in
 [TESTPLAN-remapping.md](TESTPLAN-remapping.md).
 
 ### Block layout (`0x1B` read, `0x1A` write, 276 = 0x114 bytes)
@@ -187,7 +187,6 @@ keyboard shipped with has not been compared on hardware yet (step 1 of the test 
 
 ### Safety rules implemented in `kb65he`
 
-* Nothing is written unless `experimental=True` / `--experimental` is given.
 * Every write is validated against the current key map: only entries that are known targets
   (standard, media, lighting, mouse) with `param = 0`, or the factory default of that position, may change;
   all other entries are byte-for-byte preserved. Macro/combo/DKS entries are never overwritten, and the

@@ -1,6 +1,6 @@
 """Key map (remapping) data model, names and validation.
 
-EXPERIMENTAL: reading the key map is verified on hardware, writing it is not.
+Reading and writing are verified on a KB65HE 8k ISO (2026-10-29).
 See docs/PROTOCOL.md ("Key map") and docs/TESTPLAN-remapping.md.
 
 The key map is one block of 276 bytes: 2 layers x 69 keys x 2 bytes.
@@ -42,10 +42,6 @@ class KeymapError(ValueError):
     """The key map or a requested change is invalid."""
 
 
-class ExperimentalDisabled(PermissionError):
-    """Writing the key map needs ``experimental=True``."""
-
-
 class KeymapVerifyError(IOError):
     """The keyboard returned something different from what was written."""
 
@@ -73,7 +69,7 @@ def _build_targets() -> dict[int, tuple[str, str]]:
         0x2C: "PRTSC", 0x91: "SCROLL", 0x13: "PAUSE", 0x90: "NUMLOCK",
         0x6A: "NUM*", 0x6B: "NUM+", 0x6D: "NUM-", 0x6E: "NUM.", 0x6F: "NUM/", 0x6C: "NUMENTER",
         0xC0: "`", 0xBD: "-", 0xBB: "=", 0xDB: "[", 0xDD: "]", 0xDC: "\\", 0xBA: ";", 0xDE: "'",
-        0xBC: ",", 0xBE: ".", 0xBF: "/", 0xE2: "ISO<",
+        0xBC: ",", 0xBE: ".", 0xBF: "/", 0xE2: "ISO<", 0xE3: "ISO#",
         0xA0: "LSHIFT", 0xA1: "RSHIFT", 0xA2: "LCTRL", 0xA3: "RCTRL", 0xA4: "LALT", 0xA5: "RALT",
         0x5B: "LWIN", 0x5C: "RWIN", 0x5D: "MENU",
     }.items():
@@ -106,10 +102,22 @@ _ALIASES = {
     "LMB": "MOUSE1", "RMB": "MOUSE2", "MMB": "MOUSE3",
 }
 
+# Linux input event codes (``KEY_*``) of keys that are not on the KB65HE's base layer,
+# for "press a key to assign it" in the GUI. Keys on the base layer are resolved via
+# kb65he.layout.EVDEV_TO_INDEX and the factory default.
+EVDEV_TO_FUNCTION = {
+    59: 0x70, 60: 0x71, 61: 0x72, 62: 0x73, 63: 0x74, 64: 0x75, 65: 0x76, 66: 0x77,
+    67: 0x78, 68: 0x79, 87: 0x7A, 88: 0x7B,                      # F1..F12
+    99: 0x2C, 70: 0x91, 119: 0x13, 110: 0x2D, 102: 0x24, 69: 0x90, 127: 0x5D, 126: 0x5C,
+    82: 0x60, 79: 0x61, 80: 0x62, 81: 0x63, 75: 0x64, 76: 0x65, 77: 0x66, 71: 0x67,
+    72: 0x68, 73: 0x69, 55: 0x6A, 78: 0x6B, 74: 0x6D, 83: 0x6E, 98: 0x6F, 96: 0x6C,
+    113: 173, 114: 174, 115: 175, 163: 176, 165: 177, 164: 179,
+}
+
 # Names of entries we may find on the keyboard but never write.
 _READ_ONLY_NAMES = {
     FN_MACRO: "Macro", FN_COMBO: "Combo", FN_DKS_A: "DKS?", FN_DKS: "DKS",
-    VK_FN: "Fn", 0x00: "-",
+    VK_FN: "Fn", 0x00: "-", 0xF4: "ACTMODE",
 }
 
 

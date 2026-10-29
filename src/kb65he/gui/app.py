@@ -23,12 +23,8 @@ from .qt import (
     QMessageBox,
     QPushButton,
     QSettings,
-    QHeaderView,
-    QAbstractItemView,
     QSlider,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     Qt,
     QTimer,
     QVBoxLayout,
@@ -49,10 +45,10 @@ from ..device import (
     Lighting,
     find_devices,
 )
-from ..keymap import DEFAULT_KEYMAP
-from ..layout import EVDEV_TO_INDEX, KEY_BY_INDEX
+from ..layout import EVDEV_TO_INDEX
 from . import theme
 from .i18n import tr
+from .keymap_page import KeymapPage
 from .widgets import KeyboardView, Swatch, Toast, Toggle
 
 WASD = {17, 30, 31, 32}
@@ -570,64 +566,6 @@ class ProfilesPage(QWidget):
 
 
 # ---------------------------------------------------------------------------
-class KeymapPage(QWidget):
-    """Read-only view of the key map (remapping is CLI-only and experimental)."""
-
-    def __init__(self, window: "MainWindow"):
-        super().__init__()
-        self.w = window
-        root = QVBoxLayout(self)
-        root.setContentsMargins(32, 28, 32, 28)
-        root.setSpacing(18)
-        root.addLayout(page_header(
-            tr("Key map"), tr("Key assignment of the normal layer and the Fn layer. Read-only for now.")))
-        self.table = QTableWidget(NUM_KEYS, 3)
-        self.table.setHorizontalHeaderLabels([tr("Key"), tr("Normal"), tr("Fn layer")])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        root.addWidget(self.table, 1)
-        self.info = label("", "muted")
-        root.addWidget(self.info)
-        hint = label(tr("Remapping is experimental and only available in the command line for now: kb65he keymap --help"), "faint")
-        hint.setWordWrap(True)
-        root.addWidget(hint)
-
-    def _legend(self, k: int) -> str:
-        key = KEY_BY_INDEX[k]
-        return key.labels.get(self.w.layout_name) or "Space"
-
-    def load(self, kb: KB65HE):
-        try:
-            km = kb.read_keymap()
-        except Exception as e:  # noqa: BLE001 - the other pages must keep working
-            self.info.setText(tr("Could not read the key map: {err}", err=str(e)))
-            return
-        changed = 0
-        for k in range(NUM_KEYS):
-            self.table.setItem(k, 0, QTableWidgetItem(self._legend(k)))
-            for layer in (0, 1):
-                e = km.layers[layer][k]
-                item = QTableWidgetItem(e.name + (f" ({e.param})" if e.param else ""))
-                if e != DEFAULT_KEYMAP.layers[layer][k]:
-                    changed += 1
-                    item.setForeground(QColor(theme.ACCENT))
-                self.table.setItem(k, layer + 1, item)
-        if changed:
-            self.info.setText(tr("{n} entries differ from the factory default.", n=changed) + " "
-                              + tr("Highlighted entries differ from the factory default."))
-        else:
-            self.info.setText(tr("Same as the factory default."))
-
-    def relabel(self):
-        for k in range(self.table.rowCount()):
-            item = self.table.item(k, 0)
-            if item is not None:
-                item.setText(self._legend(k))
-
-
-# ---------------------------------------------------------------------------
 class DevicePage(QWidget):
     def __init__(self, window: "MainWindow"):
         super().__init__()
@@ -798,7 +736,7 @@ class MainWindow(QMainWindow):
 
     # live key highlighting ----------------------------------------------
     def _views(self):
-        return (self.pages["actuation"].view, self.pages["lighting"].view)
+        return (self.pages["actuation"].view, self.pages["lighting"].view, self.pages["keymap"].view)
 
     def _set_pressed(self, keys: set[int]):
         self.pressed = keys
@@ -813,7 +751,12 @@ class MainWindow(QMainWindow):
                 return False
             if isinstance(QApplication.focusWidget(), QLineEdit):
                 return False
-            idx = EVDEV_TO_INDEX.get(event.nativeScanCode() - 8)
+            code = event.nativeScanCode() - 8
+            page = self.pages["keymap"]
+            if page.capturing and et == QEvent.Type.KeyPress and not event.isAutoRepeat():
+                if self.stack.currentWidget() is page and page.capture(code):
+                    return True
+            idx = EVDEV_TO_INDEX.get(code)
             if idx is None:
                 return False
             if not event.isAutoRepeat():
