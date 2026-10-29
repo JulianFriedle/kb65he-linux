@@ -9,8 +9,8 @@ from kb65he.device import KB65HE, FakeTransport
 from kb65he.keymap import (
     DEFAULT_KEYMAP,
     KEYMAP_SIZE,
+    TARGETS,
     Entry,
-    ExperimentalDisabled,
     Keymap,
     KeymapError,
     KeymapVerifyError,
@@ -104,7 +104,7 @@ def test_unknown_entries_pass_through_unchanged():
     t = FakeTransport()
     t.keymap[2 * 10:2 * 10 + 2] = bytes([0xEE, 0x09])     # something we do not understand
     kb = KB65HE(t)
-    kb.remap_key(3, "F5", layer=1, experimental=True)
+    kb.remap_key(3, "F5", layer=1)
     assert kb.read_keymap().get(0, 10) == Entry(0xEE, 9)
     assert t.keymap[20:22] == bytes([0xEE, 0x09])
 
@@ -113,7 +113,7 @@ def test_default_is_allowed_to_restore_special_codes():
     t = FakeTransport()
     t.keymap[2 * 41] = 0x41                                  # '#' key changed away from 0x16
     kb = KB65HE(t)
-    kb.reset_keymap(experimental=True)
+    kb.reset_keymap()
     assert bytes(t.keymap) == DEFAULT_KEYMAP.to_bytes()
 
 
@@ -124,34 +124,25 @@ def test_read_keymap_via_fake_transport():
     assert kb.keymap() == DEFAULT_KEYMAP.to_bytes()[:-4]   # firmware quirk: 272 bytes
 
 
-def test_write_refused_without_experimental_flag():
-    kb, t = make()
-    with pytest.raises(ExperimentalDisabled):
-        kb.write_keymap(DEFAULT_KEYMAP)
-    with pytest.raises(ExperimentalDisabled):
-        kb.remap_key(3, "F5", layer=1)
-    with pytest.raises(ExperimentalDisabled):
-        kb.reset_keymap()
-    assert t.keymap_writes == []
 
 
 def test_remap_key_roundtrip_both_layers():
     kb, t = make()
-    after = kb.remap_key(21, "Z", layer=0, experimental=True)
+    after = kb.remap_key(21, "Z", layer=0)
     assert after.get(0, 21) == Entry(0x5A, 0)
     assert kb.read_keymap().get(1, 21) == DEFAULT_KEYMAP.get(1, 21)
-    kb.remap_key(21, "F12", layer=1, experimental=True)
+    kb.remap_key(21, "F12", layer=1)
     km = kb.read_keymap()
     assert km.get(1, 21) == Entry(0x7B, 0)
     assert len(DEFAULT_KEYMAP.diff(km)) == 2
-    kb.reset_keymap(experimental=True)
+    kb.reset_keymap()
     assert kb.read_keymap() == DEFAULT_KEYMAP
     assert len(t.keymap_writes) == 3 and all(len(w) == 276 for w in t.keymap_writes)
 
 
 def test_write_unchanged_block_is_a_valid_noop():
     kb, t = make()
-    kb.write_keymap(kb.read_keymap(), experimental=True)
+    kb.write_keymap(kb.read_keymap())
     assert bytes(t.keymap) == DEFAULT_KEYMAP.to_bytes()
     assert len(t.keymap_writes) == 1
 
@@ -159,11 +150,11 @@ def test_write_unchanged_block_is_a_valid_noop():
 def test_invalid_change_sends_nothing():
     kb, t = make()
     with pytest.raises(KeymapError):
-        kb.remap_key(64, "A", layer=0, experimental=True)
+        kb.remap_key(64, "A", layer=0)
     with pytest.raises(KeymapError):
-        kb.remap_key(3, 0x98, layer=0, experimental=True)
+        kb.remap_key(3, 0x98, layer=0)
     with pytest.raises(KeymapError):
-        kb.remap_key(3, "nope", layer=0, experimental=True)
+        kb.remap_key(3, "nope", layer=0)
     assert t.keymap_writes == []
 
 
@@ -171,7 +162,7 @@ def test_readback_mismatch_rolls_back_and_raises():
     kb, t = make()
     t.keymap_corrupt_next = 1                     # first write is stored wrongly
     with pytest.raises(KeymapVerifyError) as e:
-        kb.remap_key(3, "F5", layer=1, experimental=True)
+        kb.remap_key(3, "F5", layer=1)
     assert "restored and verified" in str(e.value)
     assert kb.read_keymap() == DEFAULT_KEYMAP     # rollback worked
     assert len(t.keymap_writes) == 2
@@ -181,7 +172,7 @@ def test_readback_mismatch_with_failed_rollback_is_reported():
     kb, t = make()
     t.keymap_corrupt_next = 2                     # rollback is corrupted too
     with pytest.raises(KeymapVerifyError) as e:
-        kb.remap_key(3, "F5", layer=1, experimental=True)
+        kb.remap_key(3, "F5", layer=1)
     assert "FAILED" in str(e.value)
 
 
@@ -190,7 +181,7 @@ def test_device_rejecting_the_write_raises_and_tries_rollback():
     kb, t = make()
     t.keymap_reject = True
     with pytest.raises(DeviceStatusError):
-        kb.remap_key(3, "F5", layer=1, experimental=True)
+        kb.remap_key(3, "F5", layer=1)
     assert bytes(t.keymap) == DEFAULT_KEYMAP.to_bytes()
 
 
@@ -199,7 +190,7 @@ def test_backup_is_written_before_the_keymap(cfg):
     kb, t = make()
     backups = []
     profiles.write_keymap_safely(
-        kb, DEFAULT_KEYMAP.with_entry(1, 3, Entry(0x74, 0)), experimental=True, backups=backups)
+        kb, DEFAULT_KEYMAP.with_entry(1, 3, Entry(0x74, 0)), backups=backups)
     assert len(backups) == 1
     path = backups[0]
     assert path.parent == cfg / "kb65he" / "backups" and path.name.startswith("keymap-")
@@ -216,7 +207,7 @@ def test_no_write_if_backup_fails(cfg, monkeypatch):
     monkeypatch.setattr(profiles, "write_file", boom)
     with pytest.raises(OSError):
         profiles.write_keymap_safely(
-            kb, DEFAULT_KEYMAP.with_entry(1, 3, Entry(0x74, 0)), experimental=True)
+            kb, DEFAULT_KEYMAP.with_entry(1, 3, Entry(0x74, 0)))
     assert t.keymap_writes == []
 
 
@@ -225,15 +216,10 @@ def test_no_write_if_keymap_cannot_be_captured_for_backup(cfg, monkeypatch):
     monkeypatch.setattr(profiles, "capture", lambda kb_, name: {"keymap_raw": None})
     with pytest.raises(profiles.ProfileError):
         profiles.write_keymap_safely(
-            kb, DEFAULT_KEYMAP.with_entry(1, 3, Entry(0x74, 0)), experimental=True)
+            kb, DEFAULT_KEYMAP.with_entry(1, 3, Entry(0x74, 0)))
     assert t.keymap_writes == []
 
 
-def test_safe_write_without_flag_creates_no_backup(cfg):
-    kb, t = make()
-    with pytest.raises(ExperimentalDisabled):
-        profiles.write_keymap_safely(kb, DEFAULT_KEYMAP)
-    assert not (cfg / "kb65he" / "backups").exists()
 
 
 def test_backups_do_not_overwrite_each_other(cfg):
@@ -250,15 +236,13 @@ def test_profile_apply_never_touches_keymap_by_default(cfg):
     assert t.keymap_writes == []
 
 
-def test_profile_keymap_restore_needs_flag_and_makes_backup(cfg):
+def test_profile_keymap_restore_makes_backup(cfg):
     kb, t = make()
     prof = profiles.capture(kb, "orig")
-    kb.remap_key(3, "F5", layer=1, experimental=True)
-    with pytest.raises(ExperimentalDisabled):
-        profiles.apply(kb, prof, parts=("keymap",))
+    kb.remap_key(3, "F5", layer=1)
     assert kb.read_keymap() != DEFAULT_KEYMAP
     backups = []
-    assert profiles.apply(kb, prof, parts=("keymap",), experimental=True, backups=backups) == ["keymap"]
+    assert profiles.apply(kb, prof, parts=("keymap",), backups=backups) == ["keymap"]
     assert kb.read_keymap() == DEFAULT_KEYMAP
     assert len(backups) == 1
     assert profiles.read_file(backups[0])["keymap_raw"] != prof["keymap_raw"]
@@ -271,11 +255,11 @@ def test_profile_keymap_errors_before_any_write(cfg):
     bad = copy.deepcopy(prof)
     bad["keymap_raw"] = "00" * 10
     with pytest.raises(profiles.ProfileError):
-        profiles.apply(kb, bad, parts=("trigger", "keymap"), experimental=True)
+        profiles.apply(kb, bad, parts=("trigger", "keymap"))
     assert kb.read_trigger()[5] == (10, 5)          # trigger part was not applied either
     bad["keymap_raw"] = None
     with pytest.raises(profiles.ProfileError):
-        profiles.apply(kb, bad, parts=("keymap",), experimental=True)
+        profiles.apply(kb, bad, parts=("keymap",))
     bad["keymap_raw"] = "not hex"
     with pytest.raises(profiles.ProfileError):
         profiles.validate(bad)
@@ -291,7 +275,7 @@ def test_old_version1_profiles_still_load(cfg, tmp_path):
     loaded = profiles.read_file(p)
     assert profiles.apply(kb, loaded) == ["trigger", "lighting"]
     with pytest.raises(profiles.ProfileError):
-        profiles.apply(kb, loaded, parts=("keymap",), experimental=True)
+        profiles.apply(kb, loaded, parts=("keymap",))
 
 
 # --- CLI ------------------------------------------------------------------------
@@ -303,15 +287,6 @@ def test_cli_show_and_targets(capsys):
     assert "VOLUP" in capsys.readouterr().out
 
 
-def test_cli_set_requires_experimental(capsys, cfg):
-    with pytest.raises(SystemExit) as e:
-        cli_main(["--demo", "keymap", "set", "3", "F5", "--fn"])
-    assert "EXPERIMENTAL" in str(e.value)
-    with pytest.raises(SystemExit):
-        cli_main(["--demo", "keymap", "reset-default"])
-    with pytest.raises(SystemExit):
-        cli_main(["--demo", "restore", str(cfg / "nofile.json"), "--only", "keymap"])
-    assert not (cfg / "kb65he" / "backups").exists()
 
 
 def test_cli_set_with_flag_makes_backup(capsys, cfg):
@@ -324,8 +299,8 @@ def test_cli_set_with_flag_makes_backup(capsys, cfg):
 
 def test_cli_friendly_errors(capsys, cfg):
     for argv, text in (
-        (["keymap", "set", "3", "bogus", "--experimental"], "unknown or unsupported target"),
-        (["keymap", "set", "999", "A", "--experimental"], "unknown key"),
+        (["keymap", "set", "3", "bogus"], "unknown or unsupported target"),
+        (["keymap", "set", "999", "A"], "unknown key"),
         (["keymap", "set", "64", "A", "--experimental"], "Fn key"),
     ):
         with pytest.raises(SystemExit) as e:
@@ -334,14 +309,14 @@ def test_cli_friendly_errors(capsys, cfg):
 
 
 def test_cli_rewrite_and_reset(capsys, cfg):
-    cli_main(["--demo", "keymap", "rewrite", "--experimental"])
+    cli_main(["--demo", "keymap", "rewrite"])
     cli_main(["--demo", "keymap", "reset-default", "--experimental"])
     assert len(list((cfg / "kb65he" / "backups").glob("keymap-*.json"))) == 2
 
 
 # --- GUI ------------------------------------------------------------------------
-def test_gui_keymap_page_smoke(monkeypatch):
-    pytest.importorskip("PySide6")
+def test_gui_keymap_page_edit(monkeypatch, cfg):
+    pytest.importorskip("kb65he.gui.qt")
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     from kb65he.gui.app import MainWindow
     from kb65he.gui.qt import QApplication
@@ -349,11 +324,38 @@ def test_gui_keymap_page_smoke(monkeypatch):
     w = MainWindow(demo=True)
     w.show_page("keymap")
     page = w.pages["keymap"]
-    assert page.table.rowCount() == 69
-    assert page.table.item(0, 1).text() == "ESC" and page.table.item(0, 2).text() == "`"
+    assert page.km == DEFAULT_KEYMAP and not page.view.assign      # base layer: nothing remapped
+    page.set_layer(1)
+    assert page.view.assign[1] == "F1"                               # Fn+1 = F1
+    # Fn+G -> Pause
+    page.view.set_selection({34})
+    page.combo.setCurrentIndex(page.combo.findData(0x13))
+    page.assign_selected()
+    assert w.kb.read_keymap().get(1, 34) == Entry(0x13, 0)
+    assert 34 in page.view.changed
+    assert len(list((cfg / "kb65he" / "backups").glob("keymap-*.json"))) == 1
+    # press-a-key capture: F5 (KEY_F5 = 63)
+    page.capture_btn.setChecked(True)
+    assert page.capture(63) and page.combo.currentData() == 0x74 and not page.capturing
+    # the Fn key is locked
+    page.set_layer(0)
+    page.view.set_selection({64})
+    assert not page.apply_btn.isEnabled()
+    page.undo_last()
+    assert w.kb.read_keymap() == DEFAULT_KEYMAP
     w.set_legends("uk")
     w.close()
     app.processEvents()
+
+
+def test_gui_names():
+    pytest.importorskip("kb65he.gui.qt")
+    from kb65he.gui.keymap_page import function_for_evdev, long_name, short_name, target_groups
+    assert long_name(0x59, "de") == "Z" and long_name(0x59, "uk") == "Y"   # VK_Y sits on the Z key (DE)
+    assert short_name(0xA0, "de") == "Shift L"
+    assert function_for_evdev(34) == 0x47 and function_for_evdev(119) == 0x13
+    codes = [c for _, cs in target_groups("de") for c in cs]
+    assert len(codes) == len(set(codes)) and set(codes) <= set(TARGETS)
 
 
 def test_firmware_drops_last_four_bytes_on_read():
@@ -367,5 +369,5 @@ def test_firmware_drops_last_four_bytes_on_read():
     assert Keymap.from_bytes(DEFAULT_KEYMAP.to_bytes()[:-4]) == DEFAULT_KEYMAP
     # after a write the tool remembers what it wrote for the unreported entries
     changed = km.with_entry(1, 68, type(km.get(1, 68))(0x13, 0))   # Fn+Right -> Pause
-    kb.write_keymap(changed, experimental=True)
+    kb.write_keymap(changed)
     assert kb.read_keymap().get(1, 68).function == 0x13

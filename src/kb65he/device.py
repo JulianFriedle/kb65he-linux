@@ -12,7 +12,6 @@ from .keymap import (
     KEYMAP_SIZE,
     TARGETS,
     Entry,
-    ExperimentalDisabled,
     Keymap,
     KeymapError,
     KeymapVerifyError,
@@ -214,17 +213,16 @@ class KB65HE:
         """Raw key map block (276 bytes, see :mod:`kb65he.keymap`)."""
         return self.get(Cmd.GET_KEYMAP, KEYMAP_SIZE)
 
-    # key map (remapping) - writing is EXPERIMENTAL ---------------------------
+    # key map (remapping) -----------------------------------------------------
     def read_keymap(self) -> Keymap:
         # the firmware never reports the last 4 bytes (Fn+Down, Fn+Right); use what we
         # wrote last, otherwise the factory default (see Keymap.from_bytes)
         return Keymap.from_bytes(self.keymap(), getattr(self, "_keymap_tail", None))
 
-    def write_keymap(self, keymap: Keymap, *, experimental: bool = False,
-                     before_write=None) -> Keymap:
-        """Write a key map, read it back and compare. EXPERIMENTAL.
+    def write_keymap(self, keymap: Keymap, *, before_write=None) -> Keymap:
+        """Write a key map, read it back and compare (verified on hardware).
 
-        Nothing is sent unless ``experimental=True``. The change is validated against
+        The change is validated against
         the current key map first (:func:`kb65he.keymap.validate_change`).
         ``before_write(current)`` is called after validation and right before the
         write; if it raises, nothing is written (used for the automatic backup).
@@ -232,10 +230,6 @@ class KB65HE:
         If the read-back differs (or the write/read fails) the previous key map is
         written back once, and the error is raised. Returns the verified key map.
         """
-        if not experimental:
-            raise ExperimentalDisabled(
-                "writing the key map is experimental and has not been verified on hardware - "
-                "pass experimental=True / --experimental to confirm")
         if not isinstance(keymap, Keymap):
             raise TypeError("keymap must be a Keymap")
         current = self.read_keymap()
@@ -269,17 +263,12 @@ class KB65HE:
         except Exception:  # noqa: BLE001 - best effort, the original error is raised
             return False
 
-    def remap_key(self, key: int, target, *, layer: int = 0, experimental: bool = False,
-                  before_write=None) -> Keymap:
-        """Assign a standard key / media / lighting / mouse function to one key. EXPERIMENTAL.
+    def remap_key(self, key: int, target, *, layer: int = 0, before_write=None) -> Keymap:
+        """Assign a standard key / media / lighting / mouse function to one key.
 
         `target` is a name like ``"F5"`` or ``"volup"`` (see :func:`kb65he.keymap.parse_target`)
         or a function index from :data:`kb65he.keymap.TARGETS`. `layer` 0 = normal, 1 = Fn.
         """
-        if not experimental:
-            raise ExperimentalDisabled(
-                "remapping is experimental and has not been verified on hardware - "
-                "pass experimental=True / --experimental to confirm")
         if isinstance(target, int):
             if target not in TARGETS:
                 raise KeymapError(f"unsupported target {target:#04x}")
@@ -288,12 +277,11 @@ class KB65HE:
             function = parse_target(str(target))
         current = self.read_keymap()
         new = current.with_entry(layer, key, Entry(function, 0))
-        return self.write_keymap(new, experimental=True, before_write=before_write)
+        return self.write_keymap(new, before_write=before_write)
 
-    def reset_keymap(self, *, experimental: bool = False, before_write=None) -> Keymap:
-        """Write the factory default key map (both layers). EXPERIMENTAL."""
-        return self.write_keymap(DEFAULT_KEYMAP, experimental=experimental,
-                                 before_write=before_write)
+    def reset_keymap(self, *, before_write=None) -> Keymap:
+        """Write the factory default key map (both layers)."""
+        return self.write_keymap(DEFAULT_KEYMAP, before_write=before_write)
 
     # lighting ----------------------------------------------------------
     def read_lighting(self) -> Lighting:

@@ -18,12 +18,15 @@ over hidraw, so no driver, Wine or VM is needed.
 | **Lighting** | on/off, 11 effects, brightness, speed, 7 colour slots |
 | **Profiles** | save, load, import and export all settings as JSON |
 | **Live key view** | pressed keys light up in the GUI |
+| **Key map** | remap any key on the normal and the Fn layer (keys, media, lighting, mouse buttons), with undo and automatic backups |
 | **Device info** | serial, change counter |
 | **CLI** | everything above from the terminal |
 
 Settings are stored on the keyboard itself, so they persist on other computers.
 
-Experimental: key remapping (`kb65he keymap`, read-only view in the GUI). Not yet supported: SOCD, DKS.
+![Key map](docs/screenshots/keymap.png)
+
+Not yet supported: SOCD, DKS, macros.
 See [docs/PROTOCOL.md](docs/PROTOCOL.md) for what is known so far.
 
 ## Supported hardware
@@ -88,7 +91,8 @@ kb65he profile load Gaming
 kb65he backup ~/kb65he-backup.json  # any file
 kb65he restore ~/kb65he-backup.json
 kb65he keymap                       # show the key assignment (normal + Fn layer)
-kb65he keymap set G PAUSE --fn --experimental   # EXPERIMENTAL, see docs/TESTPLAN-remapping.md
+kb65he keymap set G PAUSE --fn     # Fn+G sends Pause (a backup is saved first)
+kb65he keymap reset-default         # factory key map
 kb65he -v info                      # show raw packets
 ```
 

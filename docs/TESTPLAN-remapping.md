@@ -5,7 +5,7 @@ factory default corrected), full rewrite identical, Fn+G → Pause produced `KEY
 Survives a replug (Fn+G was still Pause afterwards). Still open: `reset-default`. Work through the steps in order and stop at the first surprise.
 Background and evidence: [PROTOCOL.md, "Key map"](PROTOCOL.md#key-map).
 
-Every write command asks for `--experimental`, saves a backup first
+Every write command saves a backup first
 (`~/.config/kb65he/backups/keymap-<timestamp>.json`), reads the table back and compares it. If the read-back
 differs, the previous table is written back once and the command fails.
 
@@ -26,7 +26,7 @@ differs, the previous table is written back once and the command fails.
 
 3. Close `kb65he-gui` (it polls the keyboard) and any vendor/other HID tools.
 4. Make sure the udev rule is installed (`kb65he info` must work without sudo).
-5. Optional dry run without hardware: `kb65he --demo keymap set G PAUSE --fn --experimental` (uses a simulated
+5. Optional dry run without hardware: `kb65he --demo keymap set G PAUSE --fn` (uses a simulated
    keyboard and a real backup file) to see what the output looks like.
 6. Do **not** unplug the keyboard while a write command is running. Do not use firmware-update functions.
 
@@ -59,7 +59,7 @@ read-back without changing any assignment.
 
 ```bash
 kb65he info | grep Revision                      # note the change counter
-kb65he -v keymap rewrite --experimental 2>&1 | tee ~/kb65he-test-rewrite.log
+kb65he -v keymap rewrite 2>&1 | tee ~/kb65he-test-rewrite.log
 kb65he info | grep Revision                      # expect: increased (if the firmware counts it)
 kb65he keymap > ~/kb65he-test-keymap-after-rewrite.txt
 diff ~/kb65he-test-keymap-before.txt ~/kb65he-test-keymap-after-rewrite.txt && echo SAME
@@ -78,7 +78,7 @@ Fn + G normally types `g`; the test makes it send Pause, which does nothing in m
 `G` is **not** the Fn key and the normal layer is not touched.
 
 ```bash
-kb65he keymap set G PAUSE --fn --experimental        # key 34, Fn layer
+kb65he keymap set G PAUSE --fn        # key 34, Fn layer
 kb65he keymap | grep -E '^34 '                        # expect: G ... G  PAUSE*
 ```
 
@@ -95,7 +95,7 @@ combinations (Fn+1 = F1, Fn+W = lighting colour …) are unchanged.
 Then the same for the normal layer, using a key that the second keyboard can replace and that is easy to spot:
 
 ```bash
-kb65he keymap set 14 INS --experimental              # key 14 = Del; now types Insert
+kb65he keymap set 14 INS              # key 14 = Del; now types Insert
 ```
 
 Expected: pressing Del sends `KEY_INSERT`. (Name `14` is the key number; run `kb65he actuation` for numbers.)
@@ -106,29 +106,29 @@ the command reports a mismatch.
 ## 4. Revert
 
 ```bash
-kb65he keymap set G G --fn --experimental
-kb65he keymap set 14 DEL --experimental
+kb65he keymap set G G --fn
+kb65he keymap set 14 DEL
 kb65he keymap | diff ~/kb65he-test-keymap-before.txt - && echo BACK_TO_START
 ```
 
 If step 1 said `identical to built-in default` you can instead run
-`kb65he keymap reset-default --experimental` (writes the whole factory table) and compare again.
+`kb65he keymap reset-default` (writes the whole factory table) and compare again.
 Alternatively restore from the explicit backup:
 
 ```bash
-kb65he restore ~/kb65he-test-full-backup.json --only keymap --experimental
+kb65he restore ~/kb65he-test-full-backup.json --only keymap
 ```
 
 Then unplug/replug once more and check `kb65he keymap` against the starting point.
 
 ## 5. Optional extra checks (only after 1 to 4 passed)
 
-* A media target on the Fn layer: `kb65he keymap set G MUTE --fn --experimental`, test, revert (step 4).
-* A lighting target: `kb65he keymap set G LIGHTCOLOR --fn --experimental` (Fn+G now cycles colours), revert.
+* A media target on the Fn layer: `kb65he keymap set G MUTE --fn`, test, revert (step 4).
+* A lighting target: `kb65he keymap set G LIGHTCOLOR --fn` (Fn+G now cycles colours), revert.
 * Mouse buttons (`MOUSE1`) are accepted but completely untested; the keyboard may enumerate no mouse interface,
   in which case nothing happens.
 * The tool refuses (by design): remapping Fn (key 64, normal layer), overwriting macro/DKS entries,
-  unknown codes. `kb65he keymap set 64 A --experimental` should print an error and leave the keyboard alone.
+  unknown codes. `kb65he keymap set 64 A` should print an error and leave the keyboard alone.
 
 ## 6. Recovery if something goes wrong
 
@@ -138,11 +138,11 @@ Keep calm: the configurator does not depend on the keyboard's own key assignment
 
    ```bash
    ls -t ~/.config/kb65he/backups/ | head
-   kb65he restore ~/.config/kb65he/backups/keymap-<timestamp>.json --only keymap --experimental
+   kb65he restore ~/.config/kb65he/backups/keymap-<timestamp>.json --only keymap
    ```
 
    The newest backup is the state *before the last write*. Or use `~/kb65he-test-full-backup.json` from step 1.
-2. **Write the factory default**: `kb65he keymap reset-default --experimental`. This is the same table the vendor
+2. **Write the factory default**: `kb65he keymap reset-default`. This is the same table the vendor
    software writes for "restore keys" (it uses the same `0x1A` command; the vendor software has no other reset command).
    It refuses to run if a macro/DKS entry is present; clear it with the vendor software.
 3. **Vendor software**: in the Windows software use the key-assignment "Restore" button (internally
@@ -161,4 +161,4 @@ Keep calm: the configurator does not depend on the keyboard's own key assignment
 * Any status code, timeout or read-back mismatch message, verbatim.
 * The meaning of the unknown firmware codes (`0x16`, `0xF9`, `0xE3`, `0xEF`, `0xF7`) if you can observe what they do.
 
-Once steps 1 to 4 pass, `--experimental` can be dropped and the GUI editing can be built.
+Steps 1 to 4 passed; since 0.5.0 `--experimental` is no longer needed (still accepted) and the GUI can edit the key map.
