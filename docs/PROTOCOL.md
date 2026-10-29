@@ -90,7 +90,8 @@ an unmodified KB65HE 8k ISO in five special entries: base `#` key `0xE3` (table:
 Fn+Space `0xF6` (table: `0xEF`), Fn on the Fn layer `0xF5` (table: `0xF7`). The tool uses the values
 read from the keyboard as its factory default; writing the vendor table would disable Fn+Tab.
 
-Status: **read verified on hardware, write derived from the vendor software and NOT yet verified.**
+Status: **read and write verified on hardware** (2026-10-29: a full rewrite read back identical; Fn+G set
+to Pause produced `KEY_PAUSE` on the input device while G alone still produced `KEY_G`).
 Implemented as experimental in `src/kb65he/keymap.py`; hardware test steps are in
 [TESTPLAN-remapping.md](TESTPLAN-remapping.md).
 
@@ -197,8 +198,23 @@ keyboard shipped with has not been compared on hardware yet (step 1 of the test 
 
 ### Open questions
 
-* Does the keyboard accept the `0x1A` write with the status byte `0`, and is it stored immediately
-  (it should survive a replug)? Does the change counter (`0x05`) increase?
-* Is a remapped key reflected at once or after a re-enumeration?
+* Answered: the keyboard accepts the `0x1A` write with status byte `0`, and a remapped key works at
+  once, without re-enumeration.
 * What do `0x00` and the unknown firmware codes (`0x16`, `0xF9`, `0xE3`, `0xEF`, `0xF7`) do?
 * Does the firmware validate the table (e.g. refuse a missing Fn key)?
+
+## Pushed reports (from the vendor software, not yet seen on Linux)
+
+The Windows software treats an input report whose first byte (report id) is `0x04` as an event;
+`byte 1` is the event code and `byte 3` the value (`byte 7` for SOCD): `0x94` lighting effect, `0x95` colour slot,
+`0x96` brightness, `0x97` speed, `0x9C` SOCD, `0x9E` profile/layer switch, `0x9F` trigger
+distances changed on the keyboard (`0x98`–`0x9B`, `0x9D` are ignored by the vendor UI). They
+announce settings changed with Fn shortcuts; none carries key positions. Which hidraw node
+delivers them on Linux is not confirmed yet (likely the report-id-3/4 interface). Details and evidence:
+[RESEARCH-key-depth.md](RESEARCH-key-depth.md).
+
+### Unknown command ids
+
+The firmware does not answer unknown command ids at all (no `NOT_SUPPORTED`, just silence). After
+roughly two dozen unanswered requests the keyboard dropped off the bus and had to be replugged; the
+trigger table was reset to defaults (without changing the counter). Do not send unknown ids in bulk.

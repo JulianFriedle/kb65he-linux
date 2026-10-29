@@ -1,7 +1,8 @@
 # Hardware test plan: key remapping (issue #2)
 
-Status: step 1 done on hardware (read OK; firmware returns 272 of 276 bytes, factory default corrected). The key-map *read* (`0x1B`) is verified; the *write* (`0x1A`)
-is derived from the vendor software. Work through the steps in order and stop at the first surprise.
+Status: write verified on hardware (2026-10-29, KB65HE 8k ISO): read OK (firmware returns 272 of 276 bytes,
+factory default corrected), full rewrite identical, Fn+G → Pause produced `KEY_PAUSE` while G stayed `KEY_G`.
+Still open: persistence across a replug and `reset-default`. Work through the steps in order and stop at the first surprise.
 Background and evidence: [PROTOCOL.md, "Key map"](PROTOCOL.md#key-map).
 
 Every write command asks for `--experimental`, saves a backup first
