@@ -5,24 +5,28 @@ import argparse
 import os
 import sys
 
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon
-from PySide6.QtWidgets import (
+from .qt import (
     QApplication,
     QButtonGroup,
+    QColor,
     QColorDialog,
     QComboBox,
+    QEvent,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QIcon,
     QLabel,
-    QMainWindow,
-    QFileDialog,
     QLineEdit,
+    QMainWindow,
     QMessageBox,
     QPushButton,
+    QSettings,
     QSlider,
     QStackedWidget,
+    Qt,
+    QTimer,
     QVBoxLayout,
     QWidget,
 )
@@ -556,7 +560,8 @@ class ProfilesPage(QWidget):
         box.setText(text)
         box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(QMessageBox.StandardButton.Cancel)
-        return box.exec() == QMessageBox.StandardButton.Yes
+        box.exec()
+        return box.standardButton(box.clickedButton()) == QMessageBox.StandardButton.Yes
 
 
 # ---------------------------------------------------------------------------
