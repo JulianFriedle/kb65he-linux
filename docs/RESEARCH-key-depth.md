@@ -172,7 +172,7 @@ Modes:
 | `kb65he probe --repeat 0x0B` | poll one read command (10 times per second, 15 s), print a line whenever a byte of the answer changes, changed bytes marked |
 | `--out FILE` | JSON report path, default `kb65he-probe-<mode>-<time>.json` in the current directory |
 | `--ids 0x03,0x07` | restrict the scan to some ids |
-| `--demo` | run against a simulated keyboard (no hardware) |
+| `--demo` | global option, goes **before** `probe` (`kb65he --demo probe …`): simulated keyboard, no hardware |
 
 ## 6. Anleitung für den Maintainer (Deutsch)
 
@@ -207,7 +207,7 @@ nicht verändert.
 
    (Pfad wie in Schritt 4.) Ist das Paket installiert und aktuell, geht stattdessen
    `alias kbprobe='kb65he probe'`.
-6. Funktionstest ohne Tastatur-Risiko: `kbprobe --demo -y --out demo.json`. Es sollte eine Liste
+6. Funktionstest ohne Tastatur-Risiko: `PYTHONPATH=$HOME/kb65he-linux/src python3 -m kb65he.cli --demo probe -y --out demo.json` (`--demo` steht vor `probe`). Es sollte eine Liste
    mit `timeout`/`data`-Zeilen und "Report written to demo.json" erscheinen.
 
 ### Schritt 1: passiv mithören (sendet nichts)
