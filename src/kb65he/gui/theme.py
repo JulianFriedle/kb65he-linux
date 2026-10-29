@@ -52,7 +52,7 @@ QPushButton#primary {{ background: {ACCENT}; color: {ACCENT_TEXT}; border: none;
 QPushButton#primary:hover {{ background: #7ff0de; }}
 QPushButton#primary:disabled {{ background: {SURFACE_3}; color: {FAINT}; }}
 QPushButton#chip {{ border-radius: 9px; padding: 7px 12px; color: {MUTED}; }}
-QPushButton#chip:checked {{ background: {ACCENT}; color: {ACCENT_TEXT}; border-color: {ACCENT}; font-weight: 600; }}
+QPushButton#chip:checked {{ background: {ACCENT}; color: {ACCENT_TEXT}; border-color: {ACCENT}; }}
 
 QSlider {{ min-height: 22px; background: transparent; }}
 QSlider::groove:horizontal {{ height: 4px; background: {SURFACE_3}; border: none; border-radius: 2px; }}
