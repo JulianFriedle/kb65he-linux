@@ -121,7 +121,7 @@ def test_default_is_allowed_to_restore_special_codes():
 def test_read_keymap_via_fake_transport():
     kb, _ = make()
     assert kb.read_keymap() == DEFAULT_KEYMAP
-    assert kb.keymap() == DEFAULT_KEYMAP.to_bytes()
+    assert kb.keymap() == DEFAULT_KEYMAP.to_bytes()[:-4]   # firmware quirk: 272 bytes
 
 
 def test_write_refused_without_experimental_flag():
@@ -354,3 +354,18 @@ def test_gui_keymap_page_smoke(monkeypatch):
     w.set_legends("uk")
     w.close()
     app.processEvents()
+
+
+def test_firmware_drops_last_four_bytes_on_read():
+    """Real hardware returns 272 of 276 bytes (Fn layer keys 67/68 missing)."""
+    from kb65he.keymap import DEFAULT_KEYMAP, KEYMAP_SIZE, Keymap
+    kb = KB65HE(FakeTransport())
+    assert len(kb.keymap()) == KEYMAP_SIZE - 4
+    km = kb.read_keymap()                       # completed with the factory default
+    assert km == DEFAULT_KEYMAP
+    # a 272-byte backup (as saved by older builds) can still be parsed
+    assert Keymap.from_bytes(DEFAULT_KEYMAP.to_bytes()[:-4]) == DEFAULT_KEYMAP
+    # after a write the tool remembers what it wrote for the unreported entries
+    changed = km.with_entry(1, 68, type(km.get(1, 68))(0x13, 0))   # Fn+Right -> Pause
+    kb.write_keymap(changed, experimental=True)
+    assert kb.read_keymap().get(1, 68).function == 0x13

@@ -24,6 +24,8 @@ LAYER_NAMES = ("base", "fn")
 ENTRY_SIZE = 2
 LAYER_SIZE = NUM_KEYS * ENTRY_SIZE            # 138
 KEYMAP_SIZE = NUM_LAYERS * LAYER_SIZE         # 276 = 0x114
+UNREPORTED_BYTES = 4                          # firmware read drops Fn-layer keys 67 and 68
+UNREPORTED = ((1, 67), (1, 68))
 
 FN_KEY = 64                                   # the Fn key itself (base layer holds VK_FN)
 VK_FN = 0xF5
@@ -173,7 +175,18 @@ class Keymap:
     layers: tuple[tuple[Entry, ...], tuple[Entry, ...]]
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "Keymap":
+    def from_bytes(cls, data: bytes, tail: bytes | None = None) -> "Keymap":
+        """Parse a 276-byte block.
+
+        Firmware quirk: reading the block returns only 272 bytes - the last two Fn-layer
+        entries (keys 67 and 68, Fn+Down / Fn+Right) are never reported (the trigger
+        table read drops its last record the same way). A 272-byte block is completed
+        with ``tail`` (the last 4 bytes known to be written) or the factory default.
+        """
+        if len(data) == KEYMAP_SIZE - UNREPORTED_BYTES:
+            if tail is None:
+                tail = bytes.fromhex(DEFAULT_HEX)[-UNREPORTED_BYTES:]
+            data = bytes(data) + bytes(tail)
         if len(data) != KEYMAP_SIZE:
             raise KeymapError(f"key map must be {KEYMAP_SIZE} bytes, got {len(data)}")
         layers = tuple(

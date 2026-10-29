@@ -79,6 +79,11 @@ Firmware quirk: the read response never contains a record for the last key (68, 
 
 ## Key map
 
+**Firmware quirk (verified on hardware):** reading `0x1B` returns only **272** of the 276 bytes; the
+last two Fn-layer entries (keys 67 and 68, Fn+Down and Fn+Right) are never reported, just like the
+trigger-table read drops key 68. The tool completes the block with the value it wrote last, or the
+factory default, and does not depend on those two entries when verifying a write.
+
 Status: **read verified on hardware, write derived from the vendor software and NOT yet verified.**
 Implemented as experimental in `src/kb65he/keymap.py`; hardware test steps are in
 [TESTPLAN-remapping.md](TESTPLAN-remapping.md).

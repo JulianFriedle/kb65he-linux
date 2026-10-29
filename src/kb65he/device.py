@@ -216,7 +216,9 @@ class KB65HE:
 
     # key map (remapping) - writing is EXPERIMENTAL ---------------------------
     def read_keymap(self) -> Keymap:
-        return Keymap.from_bytes(self.keymap())
+        # the firmware never reports the last 4 bytes (Fn+Down, Fn+Right); use what we
+        # wrote last, otherwise the factory default (see Keymap.from_bytes)
+        return Keymap.from_bytes(self.keymap(), getattr(self, "_keymap_tail", None))
 
     def write_keymap(self, keymap: Keymap, *, experimental: bool = False,
                      before_write=None) -> Keymap:
@@ -242,6 +244,7 @@ class KB65HE:
             before_write(current)
         try:
             self.set(Cmd.SET_KEYMAP, keymap.to_bytes())
+            self._keymap_tail = keymap.to_bytes()[-4:]
             after = self.read_keymap()
         except Exception:
             self._rollback_keymap(current)
@@ -261,6 +264,7 @@ class KB65HE:
     def _rollback_keymap(self, previous: Keymap) -> bool:
         try:
             self.set(Cmd.SET_KEYMAP, previous.to_bytes())
+            self._keymap_tail = previous.to_bytes()[-4:]
             return self.read_keymap() == previous
         except Exception:  # noqa: BLE001 - best effort, the original error is raised
             return False
@@ -401,7 +405,7 @@ class FakeTransport:
                     self.revision += 1
                 return b""
             if cmd == Cmd.GET_KEYMAP:
-                full = bytes(self.keymap)
+                full = bytes(self.keymap)[:-4]  # like the real firmware: last 4 bytes missing
             else:
                 full = b"".join(bytes([k, 2, *self.trigger[k]]) for k in range(NUM_KEYS))
             chunk = MAX_CHUNK[ptype]

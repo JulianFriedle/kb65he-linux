@@ -75,7 +75,7 @@ def capture(kb: KB65HE, name: str) -> dict:
             "rapid_trigger": None if b is None else b / 10,
         })
     try:
-        keymap = kb.keymap().hex()
+        keymap = kb.read_keymap().to_bytes().hex()  # completed to 276 bytes
     except Exception:  # noqa: BLE001 - optional
         keymap = None
     return {
