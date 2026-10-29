@@ -75,3 +75,19 @@ Records of 4 bytes: `[key, 0x02, A, B]`, key = 0…68 (see `src/kb65he/layout.py
 The table must be read in one transfer (all 69 records); splitting the read request into single packets makes the firmware time out. Writes of any number of records work.
 
 Firmware quirk: the read response never contains a record for the last key (68, arrow right); the bytes at that position are left over from the previous packet. Writing key 68 is accepted.
+
+## Pushed reports (from the vendor software, not yet seen on Linux)
+
+The Windows software treats an input report whose first byte (report id) is `0x04` as an event;
+`byte 1` is the event code and `byte 3` the value (`byte 7` for SOCD): `0x94` lighting effect, `0x95` colour slot,
+`0x96` brightness, `0x97` speed, `0x9C` SOCD, `0x9E` profile/layer switch, `0x9F` trigger
+distances changed on the keyboard (`0x98`–`0x9B`, `0x9D` are ignored by the vendor UI). They
+announce settings changed with Fn shortcuts; none carries key positions. Which hidraw node
+delivers them on Linux is not confirmed yet (likely the report-id-3/4 interface). Details and evidence:
+[RESEARCH-key-depth.md](RESEARCH-key-depth.md).
+
+### Unknown command ids
+
+The firmware does not answer unknown command ids at all (no `NOT_SUPPORTED`, just silence). After
+roughly two dozen unanswered requests the keyboard dropped off the bus and had to be replugged; the
+trigger table was reset to defaults (without changing the counter). Do not send unknown ids in bulk.
