@@ -84,6 +84,12 @@ last two Fn-layer entries (keys 67 and 68, Fn+Down and Fn+Right) are never repor
 trigger-table read drops key 68. The tool completes the block with the value it wrote last, or the
 factory default, and does not depend on those two entries when verifying a write.
 
+**Factory default (verified on hardware):** the reset table inside the vendor software differs from
+an unmodified KB65HE 8k ISO in five special entries: base `#` key `0xE3` (table: `0x16`), Fn+Tab
+`0xF4` (the on-keyboard actuation adjust mode; table: plain Tab `0x09`), Fn+Ä `0xDE` (table: `0xF9`),
+Fn+Space `0xF6` (table: `0xEF`), Fn on the Fn layer `0xF5` (table: `0xF7`). The tool uses the values
+read from the keyboard as its factory default; writing the vendor table would disable Fn+Tab.
+
 Status: **read verified on hardware, write derived from the vendor software and NOT yet verified.**
 Implemented as experimental in `src/kb65he/keymap.py`; hardware test steps are in
 [TESTPLAN-remapping.md](TESTPLAN-remapping.md).

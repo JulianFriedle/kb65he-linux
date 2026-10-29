@@ -1,6 +1,6 @@
 # Hardware test plan: key remapping (issue #2)
 
-Status: **nothing in this plan has been run yet.** The key-map *read* (`0x1B`) is verified; the *write* (`0x1A`)
+Status: step 1 done on hardware (read OK; firmware returns 272 of 276 bytes, factory default corrected). The key-map *read* (`0x1B`) is verified; the *write* (`0x1A`)
 is derived from the vendor software. Work through the steps in order and stop at the first surprise.
 Background and evidence: [PROTOCOL.md, "Key map"](PROTOCOL.md#key-map).
 
