@@ -1,11 +1,14 @@
 """Profiles: save the keyboard settings to JSON files and apply them again.
 
 A profile contains the trigger table (actuation point + rapid trigger per key)
-and the lighting. The key map is stored for reference but not restored yet,
-because writing it has not been verified on hardware.
+and the lighting. The raw key map is stored as well (``keymap_raw``). Restoring it
+is EXPERIMENTAL: it is only written if ``"keymap"`` is requested explicitly in
+``parts`` together with ``experimental=True``, and an automatic backup is saved
+first. Plain ``apply(kb, profile)`` never touches the key map.
 
 Profiles live in ``$XDG_CONFIG_HOME/kb65he/profiles`` (default
 ``~/.config/kb65he/profiles``); ``export``/``import`` work with any path.
+Automatic key map backups go to ``~/.config/kb65he/backups/keymap-<timestamp>.json``.
 """
 from __future__ import annotations
 
@@ -15,6 +18,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .keymap import ExperimentalDisabled, Keymap, KeymapError
 from .device import (
     ACTUATION_MAX,
     ACTUATION_MIN,
@@ -28,7 +32,9 @@ from .device import (
 
 FORMAT = "kb65he-profile"
 VERSION = 1
-PARTS = ("trigger", "lighting")
+PARTS = ("trigger", "lighting")           # applied by default
+PART_KEYMAP = "keymap"                    # experimental, never applied by default
+ALL_PARTS = PARTS + (PART_KEYMAP,)
 
 
 class ProfileError(ValueError):
@@ -38,6 +44,10 @@ class ProfileError(ValueError):
 def profile_dir() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     return Path(base) / "kb65he" / "profiles"
+
+
+def backup_dir() -> Path:
+    return profile_dir().parent / "backups"
 
 
 def _slug(name: str) -> str:
@@ -65,7 +75,7 @@ def capture(kb: KB65HE, name: str) -> dict:
             "rapid_trigger": None if b is None else b / 10,
         })
     try:
-        keymap = kb.keymap().hex()
+        keymap = kb.read_keymap().to_bytes().hex()  # completed to 276 bytes
     except Exception:  # noqa: BLE001 - optional
         keymap = None
     return {
@@ -108,6 +118,13 @@ def validate(profile: dict) -> dict:
                                       or not ACTUATION_MIN <= round(v * 10) <= ACTUATION_MAX):
                     raise ProfileError(f"key {k}: {field} {v!r} out of range 0.1..4.0")
 
+    raw = profile.get("keymap_raw")
+    if raw is not None:
+        try:
+            bytes.fromhex(raw)
+        except (TypeError, ValueError) as e:
+            raise ProfileError("'keymap_raw' must be a hex string") from e
+
     li = profile.get("lighting")
     if li is not None:
         if not isinstance(li, dict):
@@ -129,9 +146,27 @@ def validate(profile: dict) -> dict:
     return profile
 
 
-def apply(kb: KB65HE, profile: dict, parts=PARTS) -> list[str]:
-    """Write a profile to the keyboard. Returns the list of applied parts."""
+def apply(kb: KB65HE, profile: dict, parts=PARTS, *, experimental: bool = False,
+          backups: list | None = None) -> list[str]:
+    """Write a profile to the keyboard. Returns the list of applied parts.
+
+    ``"keymap"`` in ``parts`` (EXPERIMENTAL) needs ``experimental=True``; a backup of
+    the current key map is saved first and its path appended to ``backups``.
+    Everything is checked before the first write.
+    """
     validate(profile)
+    keymap = None
+    if PART_KEYMAP in parts:
+        if not experimental:
+            raise ExperimentalDisabled(
+                "restoring the key map is experimental and has not been verified on hardware")
+        raw = profile.get("keymap_raw")
+        if not raw:
+            raise ProfileError("this profile contains no key map")
+        try:
+            keymap = Keymap.from_hex(raw)
+        except KeymapError as e:
+            raise ProfileError(f"profile key map is invalid: {e}") from e
     done = []
     if "trigger" in parts and profile.get("trigger"):
         values = {}
@@ -154,7 +189,52 @@ def apply(kb: KB65HE, profile: dict, parts=PARTS) -> list[str]:
             colors=[tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in li["colors"]],  # type: ignore[misc]
         ))
         done.append("lighting")
+    if keymap is not None:
+        write_keymap_safely(kb, keymap, experimental=True, backups=backups)
+        done.append(PART_KEYMAP)
     return done
+
+
+# --- key map safety ------------------------------------------------------------
+def backup_path() -> Path:
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    d = backup_dir()
+    p = d / f"keymap-{stamp}.json"
+    n = 1
+    while p.exists():
+        p = d / f"keymap-{stamp}-{n}.json"
+        n += 1
+    return p
+
+
+def backup_keymap(kb: KB65HE, current: Keymap | None = None) -> Path:
+    """Save a full profile (incl. the raw key map) to the backup directory.
+
+    Raises ProfileError if the key map could not be captured; callers must not write
+    in that case.
+    """
+    current = current if current is not None else kb.read_keymap()
+    path = backup_path()
+    prof = capture(kb, path.stem)
+    if prof.get("keymap_raw") != current.to_bytes().hex():
+        raise ProfileError("could not back up the key map - nothing was written")
+    return write_file(prof, path)
+
+
+def write_keymap_safely(kb: KB65HE, keymap: Keymap, *, experimental: bool = False,
+                        backups: list | None = None) -> Keymap:
+    """Write a key map after saving an automatic backup (EXPERIMENTAL).
+
+    Order: experimental flag -> validation -> backup -> write -> read-back compare.
+    If any step before the write fails, the keyboard is not touched. The backup path
+    is appended to ``backups`` if given.
+    """
+    def before(current: Keymap) -> None:
+        path = backup_keymap(kb, current)
+        if backups is not None:
+            backups.append(path)
+
+    return kb.write_keymap(keymap, experimental=experimental, before_write=before)
 
 
 # --- files -------------------------------------------------------------------

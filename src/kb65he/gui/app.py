@@ -23,8 +23,12 @@ from .qt import (
     QMessageBox,
     QPushButton,
     QSettings,
+    QHeaderView,
+    QAbstractItemView,
     QSlider,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     Qt,
     QTimer,
     QVBoxLayout,
@@ -45,7 +49,8 @@ from ..device import (
     Lighting,
     find_devices,
 )
-from ..layout import EVDEV_TO_INDEX
+from ..keymap import DEFAULT_KEYMAP
+from ..layout import EVDEV_TO_INDEX, KEY_BY_INDEX
 from . import theme
 from .i18n import tr
 from .widgets import KeyboardView, Swatch, Toast, Toggle
@@ -565,6 +570,64 @@ class ProfilesPage(QWidget):
 
 
 # ---------------------------------------------------------------------------
+class KeymapPage(QWidget):
+    """Read-only view of the key map (remapping is CLI-only and experimental)."""
+
+    def __init__(self, window: "MainWindow"):
+        super().__init__()
+        self.w = window
+        root = QVBoxLayout(self)
+        root.setContentsMargins(32, 28, 32, 28)
+        root.setSpacing(18)
+        root.addLayout(page_header(
+            tr("Key map"), tr("Key assignment of the normal layer and the Fn layer. Read-only for now.")))
+        self.table = QTableWidget(NUM_KEYS, 3)
+        self.table.setHorizontalHeaderLabels([tr("Key"), tr("Normal"), tr("Fn layer")])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        root.addWidget(self.table, 1)
+        self.info = label("", "muted")
+        root.addWidget(self.info)
+        hint = label(tr("Remapping is experimental and only available in the command line for now: kb65he keymap --help"), "faint")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+    def _legend(self, k: int) -> str:
+        key = KEY_BY_INDEX[k]
+        return key.labels.get(self.w.layout_name) or "Space"
+
+    def load(self, kb: KB65HE):
+        try:
+            km = kb.read_keymap()
+        except Exception as e:  # noqa: BLE001 - the other pages must keep working
+            self.info.setText(tr("Could not read the key map: {err}", err=str(e)))
+            return
+        changed = 0
+        for k in range(NUM_KEYS):
+            self.table.setItem(k, 0, QTableWidgetItem(self._legend(k)))
+            for layer in (0, 1):
+                e = km.layers[layer][k]
+                item = QTableWidgetItem(e.name + (f" ({e.param})" if e.param else ""))
+                if e != DEFAULT_KEYMAP.layers[layer][k]:
+                    changed += 1
+                    item.setForeground(QColor(theme.ACCENT))
+                self.table.setItem(k, layer + 1, item)
+        if changed:
+            self.info.setText(tr("{n} entries differ from the factory default.", n=changed) + " "
+                              + tr("Highlighted entries differ from the factory default."))
+        else:
+            self.info.setText(tr("Same as the factory default."))
+
+    def relabel(self):
+        for k in range(self.table.rowCount()):
+            item = self.table.item(k, 0)
+            if item is not None:
+                item.setText(self._legend(k))
+
+
+# ---------------------------------------------------------------------------
 class DevicePage(QWidget):
     def __init__(self, window: "MainWindow"):
         super().__init__()
@@ -669,6 +732,7 @@ class MainWindow(QMainWindow):
             "actuation": ActuationPage(self),
             "lighting": LightingPage(self),
             "profiles": ProfilesPage(self),
+            "keymap": KeymapPage(self),
             "device": DevicePage(self),
         }
         self.not_connected = NotConnectedPage()
@@ -678,7 +742,8 @@ class MainWindow(QMainWindow):
 
         self.nav = QButtonGroup(self)
         for key, title in [("actuation", tr("Actuation")), ("lighting", tr("Lighting")),
-                           ("profiles", tr("Profiles")), ("device", tr("Device"))]:
+                           ("profiles", tr("Profiles")), ("keymap", tr("Key map")),
+                           ("device", tr("Device"))]:
             b = QPushButton(title)
             b.setObjectName("nav")
             b.setCheckable(True)
@@ -719,6 +784,8 @@ class MainWindow(QMainWindow):
         self.pages["lighting"].view.layout_name = name
         self.pages["actuation"].view.update()
         self.pages["lighting"].view.update()
+        self.layout_name = name
+        self.pages["keymap"].relabel()
 
     def reload_pages(self):
         if self.kb is None:

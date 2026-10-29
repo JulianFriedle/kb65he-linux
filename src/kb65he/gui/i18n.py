@@ -73,6 +73,19 @@ _DE = {
     "Unofficial tool, not affiliated with Endgame Gear. Use at your own risk.":
         "Inoffizielles Tool, nicht mit Endgame Gear verbunden. Nutzung auf eigene Gefahr.",
     "Error": "Fehler",
+    "Key map": "Tastenbelegung",
+    "Key assignment of the normal layer and the Fn layer. Read-only for now.":
+        "Tastenbelegung der normalen Ebene und der Fn-Ebene. Vorerst nur Anzeige.",
+    "Key": "Taste",
+    "Normal": "Normal",
+    "Fn layer": "Fn-Ebene",
+    "Highlighted entries differ from the factory default.":
+        "Hervorgehobene Einträge weichen von der Werkseinstellung ab.",
+    "Same as the factory default.": "Entspricht der Werkseinstellung.",
+    "{n} entries differ from the factory default.": "{n} Einträge weichen von der Werkseinstellung ab.",
+    "Remapping is experimental and only available in the command line for now: kb65he keymap --help":
+        "Umbelegen ist experimentell und vorerst nur in der Kommandozeile möglich: kb65he keymap --help",
+    "Could not read the key map: {err}": "Tastenbelegung konnte nicht gelesen werden: {err}",
     "spectral_cycle": "Farbwechsel",
     "static": "Statisch",
     "surf_left": "Welle",

@@ -49,7 +49,7 @@ class Cmd:
     SET_LIGHTING = 0x18      # 26 bytes
     GET_LIGHTING = 0x19
     SET_KEYMAP = 0x1A
-    GET_KEYMAP = 0x1B        # 69 x 4 bytes (two layers of 2-byte entries)
+    GET_KEYMAP = 0x1B        # 276 bytes: 2 layers x 69 keys x (function, param)
     SET_DKS = 0x20
     GET_DKS = 0x21
     SET_TRIGGER = 0x30       # records [key, 2, actuation, b]
