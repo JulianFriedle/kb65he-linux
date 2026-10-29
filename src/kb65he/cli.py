@@ -31,75 +31,6 @@ def _parse_keys(names: list[str]) -> list[int]:
     return keys
 
 
-def _probe(a) -> None:
-    from . import probe as pr
-    from .device import BootloaderMode
-
-    try:
-        ids = pr.parse_ids(a.ids) if a.ids else list(pr.DEFAULT_IDS)
-        repeat = int(a.repeat, 0) if a.repeat else None
-        if repeat is not None and not pr.is_read_cmd(repeat):
-            raise pr.UnsafeCommand(f"0x{repeat:02X} is not an odd id in 0x01..0x3F - only read commands are allowed")
-    except (ValueError, pr.UnsafeCommand) as e:
-        sys.exit(str(e))
-    mode = "watch" if a.watch is not None else "repeat" if repeat is not None else "scan"
-    out = a.out or pr.default_report_name(mode)
-    try:
-        nodes = [] if a.demo else pr.find_nodes()
-    except BootloaderMode as e:
-        sys.exit(str(e))
-    if not nodes and not a.demo:
-        sys.exit("KB65HE 8k not found. Is it plugged in and is the udev rule installed? (see README)")
-    report = pr.new_report(mode, nodes)
-    for n in nodes:
-        s = pr.summarise_descriptor(n.descriptor)
-        print(f"{n.path}  {'vendor interface' if n.is_vendor else 'other interface ':16s}"
-              f" report ids {s['report_ids'] or '-'}  usage pages {', '.join(s['usage_pages'])}")
-    dev = None
-    if mode == "watch":
-        if a.demo:
-            sys.exit("--watch needs a real keyboard")
-    elif a.demo:
-        dev = pr.FakeProbeDevice()
-    else:
-        vendor = [n for n in nodes if n.is_vendor]
-        if not vendor:
-            sys.exit("no vendor interface (usage page 0xFF01) found")
-        try:
-            dev = pr.HidrawProbeDevice(vendor[0].path, verbose=a.verbose)
-        except PermissionError as e:
-            sys.exit(f"{e}\nInstall the udev rule (see README) and replug the keyboard.")
-    try:
-        if mode == "watch":
-            print(f"Listening on {len(nodes)} node(s) for {a.watch:g} s. Nothing is sent. Press keys now.")
-            report["watch"] = pr.run_watch(nodes, a.watch)
-            print(f"{report['watch']['report_count']} report(s) seen")
-        else:
-            link = pr.ReadOnlyLink(dev)
-            if mode == "repeat":
-                print(f"Polling read command 0x{repeat:02X} for {a.seconds:g} s - press and release keys now.")
-                report["repeat"] = pr.run_repeat(link, repeat, a.seconds, a.interval, a.timeout,
-                                                 color=sys.stdout.isatty())
-                print("Result:", report["repeat"]["verdict"], report["repeat"]["changed_offsets"] or "")
-            else:
-                print(f"Will send {len(ids)} read request(s), one each, no payload: "
-                      + " ".join(f"0x{c:02X}" for c in ids))
-                if not a.yes and not a.demo:
-                    if not sys.stdin.isatty():
-                        sys.exit("not a terminal - pass --yes to scan")
-                    input("Only odd (read) ids are sent. Press Enter to start, Ctrl+C to abort. ")
-                report["scan"] = pr.run_scan(link, ids, a.timeout)
-                print("Summary:", report["scan"]["summary"])
-    except KeyboardInterrupt:
-        print("\ninterrupted")
-        report["interrupted"] = True
-    finally:
-        if dev:
-            dev.close()
-        pr.write_report(report, out)
-        print(f"Report written to {out} - please attach it to the issue.")
-
-
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="kb65he", description="Configure the Endgame Gear KB65HE 8k on Linux (unofficial).")
     ap.add_argument("--version", action="version", version=__version__)
@@ -140,17 +71,6 @@ def main(argv: list[str] | None = None) -> None:
     raw.add_argument("a", type=int, help="actuation, 1..40 (0.1 mm)")
     raw.add_argument("b", type=int, help="rapid-trigger distance, 1..40 (0.1 mm)")
 
-    pb = sub.add_parser("probe", help="(research) read-only probe for undocumented features, e.g. key depth (issue #3)")
-    pb.add_argument("--ids", help="comma-separated odd read command ids (default: all unknown ones, 0x01..0x3F)")
-    pb.add_argument("--timeout", type=float, default=0.5, help="seconds to wait per request (default 0.5)")
-    pb.add_argument("--out", help="JSON report file (default: kb65he-probe-<mode>-<time>.json)")
-    pb.add_argument("-y", "--yes", action="store_true", help="do not ask before scanning")
-    mode = pb.add_mutually_exclusive_group()
-    mode.add_argument("--watch", type=float, metavar="SECONDS", help="only listen for unsolicited reports, send nothing")
-    mode.add_argument("--repeat", metavar="CMD", help="poll one read command and highlight changing bytes")
-    pb.add_argument("--seconds", type=float, default=15.0, help="duration of --repeat (default 15)")
-    pb.add_argument("--interval", type=float, default=0.1, help="pause between --repeat requests (default 0.1, min 0.02)")
-
     li = sub.add_parser("set-lighting", help="change lighting")
     li.add_argument("--on", choices=["on", "off"])
     li.add_argument("--effect", choices=LIGHT_EFFECTS)
@@ -175,10 +95,6 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"deleted {a.name}")
         except profiles.ProfileError as e:
             sys.exit(str(e))
-        return
-
-    if a.cmd == "probe":
-        _probe(a)
         return
 
     # validate profile files before touching the device

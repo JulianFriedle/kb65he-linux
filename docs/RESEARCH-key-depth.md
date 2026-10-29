@@ -134,171 +134,17 @@ probably needs a parameter (for example a key index), and a probe with empty pay
 that only as a status other than `NOT_SUPPORTED`. That is why the probe reports "recognised"
 ids separately from ids that return data.
 
-## 5. The probe: `kb65he probe`
+## 5. The probe tool (not part of main)
 
-Code: `src/kb65he/probe.py`, CLI in `src/kb65he/cli.py`, tests in `tests/test_probe.py`.
+A read-only probe (`kb65he probe` with `--watch`, a scan of unknown odd ids and `--repeat`) was
+written for this investigation and run once on real hardware (results below). It is **not** shipped
+in the main code: its question is answered, and its scan made the keyboard drop off the bus. The
+code is preserved on the branch
+[`research/key-depth-probe`](https://github.com/JulianFriedle/kb65he-linux/tree/research/key-depth-probe)
+(it stops after 3 unanswered requests in a row). Only rerun it if a firmware update adds features,
+and prefer the passive `--watch` mode, which sends nothing.
 
-Safety guarantees (each one is enforced in code and covered by a test):
-
-* **Only read commands.** Requests are built by `build_read_request`, which accepts only odd ids
-  `0x01..0x3F`. Even ids (all writes: `0x00`, `0x18`, `0x1A`, `0x20`, `0x30`, `0x34`, and every
-  unknown even id) raise `UnsafeCommand`, from the CLI options (`--ids`, `--repeat`), from the
-  API and from the packet layer.
-* **Packet-level check.** `check_read_only_packet` accepts nothing but a single 64-byte type-0
-  packet with an odd command id, zero length, all-zero payload and a valid checksum. It runs in
-  `ReadOnlyLink.request` and again inside `HidrawProbeDevice.exchange`, immediately before
-  `os.write`. A hand-made write packet is refused even if someone bypasses the link class.
-* **No payload, no multi-packet transfers.** Nothing can be written "through" a read id.
-* **One request per id, short timeout (0.5 s), no retries.** Busy answers are recorded, not
-  retried. `--repeat` is limited to 50 requests per second.
-* **Control read.** `0x05` (a harmless known read) is sent before and after the scan. If the
-  first one does not answer, nothing else is sent. If the second one fails, the tool warns.
-* **`--watch` cannot write.** It opens the hidraw nodes with `O_RDONLY`.
-* **The scan asks first** (Enter to continue) unless `--yes` is given.
-* **No serial number** is requested (`0x0D` is not used), so the report contains none. It does
-  contain the report descriptors, the kernel version and the raw answers.
-
-The residual risk is the firmware itself: "odd = read" holds for all 8 known pairs and is the
-protocol convention, but it cannot be proven for ids nobody has seen. Settings live in the
-keyboard's flash and the probe never sends a write, so the realistic worst case is a firmware
-that stops answering until it is replugged.
-
-Modes:
-
-| Command | What it does |
-|---|---|
-| `kb65he probe` | scan: one empty read request for each of the 24 unknown odd ids, classified as `data`, `empty`, `status:<NAME>`, `bad-checksum` or `timeout` |
-| `kb65he probe --watch 30` | passive: print every report from all hidraw nodes of the keyboard for 30 s, labelled when it is a known event |
-| `kb65he probe --repeat 0x0B` | poll one read command (10 times per second, 15 s), print a line whenever a byte of the answer changes, changed bytes marked |
-| `--out FILE` | JSON report path, default `kb65he-probe-<mode>-<time>.json` in the current directory |
-| `--ids 0x03,0x07` | restrict the scan to some ids |
-| `--demo` | global option, goes **before** `probe` (`kb65he --demo probe …`): simulated keyboard, no hardware |
-
-## 6. Anleitung für den Maintainer (Deutsch)
-
-Ziel: herausfinden, ob die Tastatur irgendwo Tiefenwerte liefert. Dauer insgesamt etwa 10 Minuten.
-Es werden nur Lese-Befehle (ungerade IDs) gesendet. Die Tastatureinstellungen werden dabei
-nicht verändert.
-
-### Vorbereitung
-
-1. Tastatur direkt am Rechner anstecken (kein Hub, kein KVM) und das normale Profil lassen,
-   wie es ist.
-2. Die GUI schließen (`kb65he-gui`), damit nichts anderes mit der Tastatur spricht.
-3. Die udev-Regel muss installiert sein (README, Abschnitt Installation). Test:
-   `kb65he info` zeigt Serial und Revision an. Falls nicht installiert, Regel installieren und
-   Tastatur ab- und wieder anstecken.
-4. Ein Terminal öffnen und in den Ordner mit dem Repository wechseln, auf den Branch
-   `research/key-depth` (oder nach dem Merge auf `main`):
-
-   ```bash
-   cd ~/kb65he-linux            # Pfad anpassen
-   git fetch origin
-   git checkout research/key-depth
-   mkdir -p ~/kb65he-probe && cd ~/kb65he-probe
-   ```
-
-   Die Report-Dateien landen im aktuellen Ordner, hier also in `~/kb65he-probe`.
-5. Den Befehl festlegen. Ohne Installation, direkt aus dem Repository:
-
-   ```bash
-   alias kbprobe='PYTHONPATH=$HOME/kb65he-linux/src python3 -m kb65he.cli probe'
-   ```
-
-   (Pfad wie in Schritt 4.) Ist das Paket installiert und aktuell, geht stattdessen
-   `alias kbprobe='kb65he probe'`.
-6. Funktionstest ohne Tastatur-Risiko: `PYTHONPATH=$HOME/kb65he-linux/src python3 -m kb65he.cli --demo probe -y --out demo.json` (`--demo` steht vor `probe`). Es sollte eine Liste
-   mit `timeout`/`data`-Zeilen und "Report written to demo.json" erscheinen.
-
-### Schritt 1: passiv mithören (sendet nichts)
-
-```bash
-kbprobe --watch 40 --out probe-watch.json
-```
-
-Gleich nach dem Start erscheinen die Zeilen pro hidraw-Gerät (Interfaces, `report ids`). Dann
-innerhalb der 40 Sekunden, in dieser Reihenfolge:
-
-1. 5 Sekunden nichts drücken (zeigt, ob die Tastatur von selbst Daten schickt).
-2. Einzelne Buchstabentasten langsam bis zum Anschlag drücken und loslassen (W, A, S, D, Leertaste), je einmal.
-3. Eine Taste langsam halb herunterdrücken und halten, dann loslassen.
-4. Die Beleuchtung per Fn-Kombination an der Tastatur ändern (Effekt, Helligkeit oder Farbe
-   wechseln, je nachdem was die Tastatur dafür vorsieht). Das ist die Positivkontrolle: dabei
-   sollten Zeilen mit `EVENT 0x94`, `0x95`, `0x96` oder `0x97` erscheinen. Kommt nichts, hört
-   das Tool auf dem falschen Gerät mit, und die Datei ist trotzdem wertvoll.
-5. Optional: Fn+Tab (Einstellmodus für den Rapid Trigger) kurz benutzen, erwartet wird `EVENT 0x9F`.
-
-Notiere dir, bei welchem Schritt welche Zeilen kamen. Mit Strg+C kann abgebrochen werden, die
-Datei wird trotzdem geschrieben.
-
-### Schritt 2: alle unbekannten Lese-Befehle einmal abfragen
-
-```bash
-kbprobe --out probe-scan.json
-```
-
-Das Tool zeigt die 24 IDs, die es senden wird, und wartet auf Enter. Währenddessen keine Taste
-drücken. Es dauert etwa 15 Sekunden. Am Ende steht eine Zusammenfassung:
-
-* `interesting`: IDs, die Daten geliefert haben (am wichtigsten).
-* `recognised`: IDs, die mit einem anderen Status als `NOT_SUPPORTED` geantwortet haben (z. B.
-  `BAD_DATA`). Die ID existiert dann wahrscheinlich und will einen Parameter, zum Beispiel
-  eine Tastennummer.
-* `timeouts` und `error_status`: erwartetes Rauschen.
-* `control_ok_after`: muss `True` sein. Bei `False` die Tastatur ab- und wieder anstecken.
-
-### Schritt 3: nur falls Schritt 2 `interesting` IDs gefunden hat
-
-Für jede ID unter `interesting` (hier als Beispiel `0x0B`, die ID durch die gefundene ersetzen):
-
-```bash
-kbprobe --repeat 0x0B --seconds 25 --out probe-repeat-0x0B.json
-```
-
-Während der 25 Sekunden: nacheinander verschiedene Tasten (W, A, Leertaste, eine Taste weit
-rechts) jeweils langsam bis zum Anschlag drücken, 2 Sekunden unten halten, langsam
-loslassen. Immer nur eine Taste auf einmal. Das Tool druckt eine Zeile, sobald sich ein Byte
-der Antwort ändert; geänderte Bytes stehen in `[eckigen Klammern]` (im Terminal rot). Am Ende
-steht `answer changed while polling` oder `answer never changed`.
-
-Kontrolltest für die Methode (optional, 5 Sekunden): `kbprobe --repeat 0x05 --seconds 5
---out probe-repeat-0x05.json`. Das ist ein bekannter Befehl, dessen Antwort sich nicht ändern
-darf (`answer never changed`).
-
-### Schritt 4: Ergebnisse an Issue #3 anhängen
-
-Alle `probe-*.json`-Dateien aus `~/kb65he-probe` an das Issue #3 anhängen
-(`ls ~/kb65he-probe`). Mindestens:
-
-* `probe-watch.json`
-* `probe-scan.json`
-* `probe-repeat-<ID>.json`, falls Schritt 3 gemacht wurde
-
-Zusätzlich ein, zwei Sätze, was bei welchem Schritt auf dem Bildschirm passierte (vor allem
-Schritt 1.4). In den Dateien stehen keine Seriennummer und keine Tastatureinstellungen,
-aber Kernel-Version, hidraw-Pfade, Report-Deskriptoren und die rohen Antworten.
-
-### Wie die Ergebnisse zu lesen sind
-
-| Ergebnis | Bedeutung | Nächster Schritt |
-|---|---|---|
-| Scan: nichts bei `interesting` und `recognised` | Es gibt keinen leicht auffindbaren Lese-Befehl für Tiefe. Issue als "nicht möglich mit bekannter Firmware" schließen. | keiner |
-| Scan: `recognised` mit `BAD_DATA` o. Ä., aber keine Daten | Befehl existiert und braucht Parameter. | Probe um eine Anfrage mit Nutzdaten (Tastennummer) erweitern, bewusst und getrennt vom sicheren Modus |
-| `interesting` und `--repeat` zeigt Änderungen beim Drücken | Tiefenwerte gefunden. | Bytes-Offsets und Wertebereich aus `value_ranges` im Report nehmen, daraus `read_key_depth()` und die GUI-Anzeige bauen (nicht Teil dieses Branches) |
-| `interesting`, aber `answer never changed` | Statischer Befehl (Konfiguration oder Info). | In `docs/PROTOCOL.md` dokumentieren |
-| Watch: `EVENT 0x94-0x9F` beim Beleuchten, nichts beim Tastendruck | Wie erwartet: Events melden nur Konfigurationsänderungen. | keiner |
-| Watch: Zeilen mit `report id 4, unknown code` oder unbekannte Reports beim Tastendruck | Neue Information. | Datei anhängen, dann gezielt auswerten |
-
-## 7. Library and GUI
-
-Because the research found no concrete depth command, `read_key_depth()` and a GUI overlay
-were deliberately **not** added. As soon as the probe finds a command, the plan is:
-`KB65HE.read_key_depth() -> dict[int, float]` next to `read_trigger()` in `device.py`, plus
-an optional fill bar in `KeyboardView` (`gui/widgets.py`) that is only enabled when the
-device answers the command.
-
-
-## 8. Hardware results (2026-10-29, KB65HE 8k ISO, 3367:5035)
+## 6. Hardware results (2026-10-29, KB65HE 8k ISO, 3367:5035)
 
 * `--watch 40`: key presses only appear on the normal keyboard interfaces (`hidraw2` report id 1,
   `hidraw4` report id 2) as plain on/off reports. **Nothing** arrived on the vendor interface
@@ -307,9 +153,11 @@ device answers the command.
   even `NOT_SUPPORTED`). After ~23 unanswered requests the keyboard dropped off the bus
   (`EIO` on hidraw) and had to be replugged. Afterwards it enumerated normally (`3367:5035`), the
   change counter was unchanged (nothing was written), but the trigger table read back different
-  rapid-trigger values than before (1.0 mm instead of 0.2 mm) - under investigation (possibly the
-  second trigger table / "low latency" layer becoming active after the reset).
+  values than before (actuation and rapid trigger back to 1.0 / 1.0 mm), i.e. the crash reset the
+  trigger table to defaults without increasing the change counter.
 * Consequence for the probe: the scan now stops after 3 unanswered requests in a row and handles a
   disappearing device. **Do not run the full scan again.**
+* A normal unplug/replug keeps all settings; the reset above was caused by the crash only. A saved
+  profile (`kb65he profile load`) restored the previous state immediately.
 * Conclusion: no live key-depth data is available from this firmware through the configuration
   interface. Issue #3 can be closed as "not possible with the current firmware".

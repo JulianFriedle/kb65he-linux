@@ -83,5 +83,11 @@ The Windows software treats an input report whose first byte (report id) is `0x0
 `0x96` brightness, `0x97` speed, `0x9C` SOCD, `0x9E` profile/layer switch, `0x9F` trigger
 distances changed on the keyboard (`0x98`–`0x9B`, `0x9D` are ignored by the vendor UI). They
 announce settings changed with Fn shortcuts; none carries key positions. Which hidraw node
-delivers them is unknown; `kb65he probe --watch` listens on all of them. Details and evidence:
+delivers them on Linux is not confirmed yet (likely the report-id-3/4 interface). Details and evidence:
 [RESEARCH-key-depth.md](RESEARCH-key-depth.md).
+
+### Unknown command ids
+
+The firmware does not answer unknown command ids at all (no `NOT_SUPPORTED`, just silence). After
+roughly two dozen unanswered requests the keyboard dropped off the bus and had to be replugged; the
+trigger table was reset to defaults (without changing the counter). Do not send unknown ids in bulk.
