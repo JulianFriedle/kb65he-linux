@@ -150,10 +150,6 @@ def main(argv: list[str] | None = None) -> None:
     raw.add_argument("a", type=int, help="actuation, 1..40 (0.1 mm)")
     raw.add_argument("b", type=int, help="rapid-trigger distance, 1..40 (0.1 mm)")
 
-    pr = sub.add_parser("light-probe", help="(research) try effect ids beyond the known ones, one by one")
-    pr.add_argument("--first", type=int, default=11, help="first effect id to try (default 11)")
-    pr.add_argument("--last", type=int, default=30, help="last effect id to try (default 30)")
-
     li = sub.add_parser("set-lighting", help="change lighting")
     li.add_argument("--on", choices=["on", "off"])
     li.add_argument("--effect", choices=LIGHT_EFFECTS)
@@ -278,25 +274,6 @@ def main(argv: list[str] | None = None) -> None:
             print("before:", kb.read_trigger().get(key, "?"))
             kb.set(Cmd.SET_TRIGGER, bytes([key, 2, a.a, a.b]))
             print("after: ", kb.read_trigger().get(key, "?"))
-        elif a.cmd == "light-probe":
-            if not (0 <= a.first <= a.last <= 255):
-                sys.exit("--first/--last must satisfy 0 <= first <= last <= 255")
-            orig = kb.read_lighting()
-            print(f"current: effect={orig.effect}; it is restored at the end (or press Ctrl+C).")
-            print("Enter = next id, q + Enter = stop. Note every id that shows something new.")
-            try:
-                for eid in range(a.first, a.last + 1):
-                    li_ = kb.read_lighting()
-                    li_.effect = eid
-                    kb.write_lighting(li_)
-                    seen = kb.read_lighting().effect
-                    if input(f"effect id {eid} (keyboard reports {seen}) > ").strip().lower() == "q":
-                        break
-            except (KeyboardInterrupt, EOFError):
-                print()
-            finally:
-                kb.write_lighting(orig)
-                print(f"restored effect {orig.effect}")
         elif a.cmd == "set-lighting":
             li_ = kb.read_lighting()
             if a.on:
