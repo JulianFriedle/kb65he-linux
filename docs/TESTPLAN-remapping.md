@@ -2,7 +2,7 @@
 
 Status: write verified on hardware (2026-10-29, KB65HE 8k ISO): read OK (firmware returns 272 of 276 bytes,
 factory default corrected), full rewrite identical, Fn+G → Pause produced `KEY_PAUSE` while G stayed `KEY_G`.
-Still open: persistence across a replug and `reset-default`. Work through the steps in order and stop at the first surprise.
+Survives a replug (Fn+G was still Pause afterwards). Still open: `reset-default`. Work through the steps in order and stop at the first surprise.
 Background and evidence: [PROTOCOL.md, "Key map"](PROTOCOL.md#key-map).
 
 Every write command asks for `--experimental`, saves a backup first
