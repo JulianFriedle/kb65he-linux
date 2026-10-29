@@ -7,6 +7,18 @@ import select
 import time
 from dataclasses import dataclass, field
 
+from .keymap import (
+    DEFAULT_KEYMAP,
+    KEYMAP_SIZE,
+    TARGETS,
+    Entry,
+    ExperimentalDisabled,
+    Keymap,
+    KeymapError,
+    KeymapVerifyError,
+    parse_target,
+    validate_change,
+)
 from .protocol import (
     Cmd,
     DeviceStatusError,
@@ -199,7 +211,85 @@ class KB65HE:
         return int.from_bytes(self.get(Cmd.GET_REVISION, 20)[:4], "little")
 
     def keymap(self) -> bytes:
-        return self.get(Cmd.GET_KEYMAP, NUM_KEYS * 4)
+        """Raw key map block (276 bytes, see :mod:`kb65he.keymap`)."""
+        return self.get(Cmd.GET_KEYMAP, KEYMAP_SIZE)
+
+    # key map (remapping) - writing is EXPERIMENTAL ---------------------------
+    def read_keymap(self) -> Keymap:
+        return Keymap.from_bytes(self.keymap())
+
+    def write_keymap(self, keymap: Keymap, *, experimental: bool = False,
+                     before_write=None) -> Keymap:
+        """Write a key map, read it back and compare. EXPERIMENTAL.
+
+        Nothing is sent unless ``experimental=True``. The change is validated against
+        the current key map first (:func:`kb65he.keymap.validate_change`).
+        ``before_write(current)`` is called after validation and right before the
+        write; if it raises, nothing is written (used for the automatic backup).
+
+        If the read-back differs (or the write/read fails) the previous key map is
+        written back once, and the error is raised. Returns the verified key map.
+        """
+        if not experimental:
+            raise ExperimentalDisabled(
+                "writing the key map is experimental and has not been verified on hardware - "
+                "pass experimental=True / --experimental to confirm")
+        if not isinstance(keymap, Keymap):
+            raise TypeError("keymap must be a Keymap")
+        current = self.read_keymap()
+        validate_change(current, keymap)
+        if before_write is not None:
+            before_write(current)
+        try:
+            self.set(Cmd.SET_KEYMAP, keymap.to_bytes())
+            after = self.read_keymap()
+        except Exception:
+            self._rollback_keymap(current)
+            raise
+        if after != keymap:
+            restored = self._rollback_keymap(current)
+            diffs = ", ".join(f"layer {l} key {k}: wrote {w.function:#04x}/{w.param:#04x}, "
+                              f"read {r.function:#04x}/{r.param:#04x}"
+                              for l, k, w, r in keymap.diff(after)[:5])
+            raise KeymapVerifyError(
+                "key map read-back differs from what was written (" + diffs + "); "
+                + ("the previous key map was restored and verified" if restored
+                   else "RESTORING THE PREVIOUS KEY MAP FAILED - restore your backup, see "
+                        "docs/TESTPLAN-remapping.md"))
+        return after
+
+    def _rollback_keymap(self, previous: Keymap) -> bool:
+        try:
+            self.set(Cmd.SET_KEYMAP, previous.to_bytes())
+            return self.read_keymap() == previous
+        except Exception:  # noqa: BLE001 - best effort, the original error is raised
+            return False
+
+    def remap_key(self, key: int, target, *, layer: int = 0, experimental: bool = False,
+                  before_write=None) -> Keymap:
+        """Assign a standard key / media / lighting / mouse function to one key. EXPERIMENTAL.
+
+        `target` is a name like ``"F5"`` or ``"volup"`` (see :func:`kb65he.keymap.parse_target`)
+        or a function index from :data:`kb65he.keymap.TARGETS`. `layer` 0 = normal, 1 = Fn.
+        """
+        if not experimental:
+            raise ExperimentalDisabled(
+                "remapping is experimental and has not been verified on hardware - "
+                "pass experimental=True / --experimental to confirm")
+        if isinstance(target, int):
+            if target not in TARGETS:
+                raise KeymapError(f"unsupported target {target:#04x}")
+            function = target
+        else:
+            function = parse_target(str(target))
+        current = self.read_keymap()
+        new = current.with_entry(layer, key, Entry(function, 0))
+        return self.write_keymap(new, experimental=True, before_write=before_write)
+
+    def reset_keymap(self, *, experimental: bool = False, before_write=None) -> Keymap:
+        """Write the factory default key map (both layers). EXPERIMENTAL."""
+        return self.write_keymap(DEFAULT_KEYMAP, experimental=experimental,
+                                 before_write=before_write)
 
     # lighting ----------------------------------------------------------
     def read_lighting(self) -> Lighting:
@@ -265,6 +355,10 @@ class FakeTransport:
         for k in (17, 30, 31, 32):  # W A S D
             self.trigger[k][0] = 4
         self.revision = 0x2C
+        self.keymap = bytearray(DEFAULT_KEYMAP.to_bytes())
+        self.keymap_writes: list[bytes] = []   # every accepted 0x1A payload, for tests
+        self.keymap_corrupt_next = 0           # store garbage for the next N accepted writes
+        self.keymap_reject = False             # simulate a keyboard that answers BAD_DATA
 
     def transact(self, packet: bytes) -> bytes:
         from .protocol import DATA_OFFSET, HEADER_EXTRA
@@ -277,7 +371,7 @@ class FakeTransport:
             self.lighting[:] = data[:26]
             self.revision += 1
             return b""
-        if cmd in (Cmd.GET_TRIGGER, Cmd.SET_TRIGGER):
+        if cmd in (Cmd.GET_TRIGGER, Cmd.SET_TRIGGER, Cmd.GET_KEYMAP, Cmd.SET_KEYMAP):
             # multi-packet: collect the request, answer chunk by chunk
             from .protocol import MAX_CHUNK
             idx, count = {
@@ -295,7 +389,21 @@ class FakeTransport:
                         self.trigger[self._buf[i]] = [self._buf[i + 2], self._buf[i + 3]]
                     self.revision += 1
                 return b""
-            full = b"".join(bytes([k, 2, *self.trigger[k]]) for k in range(NUM_KEYS))
+            if cmd == Cmd.SET_KEYMAP:
+                if idx == count - 1:
+                    if self.keymap_reject or len(self._buf) != KEYMAP_SIZE:
+                        raise DeviceStatusError(cmd, 6)
+                    self.keymap_writes.append(bytes(self._buf))
+                    self.keymap[:] = self._buf
+                    if self.keymap_corrupt_next > 0:
+                        self.keymap_corrupt_next -= 1
+                        self.keymap[0] ^= 0xFF
+                    self.revision += 1
+                return b""
+            if cmd == Cmd.GET_KEYMAP:
+                full = bytes(self.keymap)
+            else:
+                full = b"".join(bytes([k, 2, *self.trigger[k]]) for k in range(NUM_KEYS))
             chunk = MAX_CHUNK[ptype]
             return full[idx * chunk:(idx + 1) * chunk]
         if cmd == Cmd.GET_SERIAL:
